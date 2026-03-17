@@ -1,0 +1,5 @@
+conda create -n p6spy python=3.11
+conda activate p6spy
+conda install pandas streamlit pyarrow -c conda-forge
+pip install streamlit   # if you want latest streamlit
+# then copy your .py file there and run

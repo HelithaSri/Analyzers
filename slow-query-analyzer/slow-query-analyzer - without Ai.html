@@ -1,0 +1,1067 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SlowQuery — MySQL Log Analyzer</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Syne:wght@400;500;600;700;800&family=Inter:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #12121a;
+    --surface2: #1a1a26;
+    --surface3: #22223a;
+    --border: #2a2a40;
+    --border2: #3a3a58;
+    --text: #e8e8f0;
+    --text2: #9090b0;
+    --text3: #5a5a80;
+    --accent: #6c63ff;
+    --accent2: #8b83ff;
+    --red: #ff5566;
+    --red-bg: #1a0d10;
+    --red-border: #3a1520;
+    --amber: #ffaa33;
+    --amber-bg: #1a1200;
+    --amber-border: #3a2800;
+    --green: #33dd88;
+    --green-bg: #001a0d;
+    --green-border: #003320;
+    --blue: #44aaff;
+    --blue-bg: #001020;
+    --radius: 10px;
+    --radius-sm: 6px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Inter', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Grid background */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(108,99,255,0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(108,99,255,0.04) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .app { position: relative; z-index: 1; max-width: 1100px; margin: 0 auto; padding: 2rem 1.5rem 4rem; }
+
+  /* Header */
+  .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 3rem; }
+  .logo { display: flex; align-items: center; gap: 12px; }
+  .logo-icon {
+    width: 38px; height: 38px; border-radius: 10px;
+    background: linear-gradient(135deg, var(--accent), #a855f7);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+  }
+  .logo-text { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 20px; letter-spacing: -0.5px; }
+  .logo-sub { font-size: 11px; color: var(--text3); font-family: 'IBM Plex Mono', monospace; letter-spacing: 0.05em; }
+  .header-badge {
+    font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+    color: var(--accent2); background: rgba(108,99,255,0.12);
+    border: 1px solid rgba(108,99,255,0.25); padding: 4px 12px; border-radius: 20px;
+  }
+
+  /* Upload zone */
+  .upload-zone {
+    border: 1.5px dashed var(--border2);
+    border-radius: 16px;
+    padding: 3.5rem 2rem;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.25s ease;
+    background: var(--surface);
+    position: relative;
+    overflow: hidden;
+  }
+  .upload-zone::before {
+    content: '';
+    position: absolute; inset: 0;
+    background: radial-gradient(ellipse at 50% 0%, rgba(108,99,255,0.08) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .upload-zone:hover, .upload-zone.drag-over {
+    border-color: var(--accent);
+    background: rgba(108,99,255,0.06);
+  }
+  .upload-zone input { display: none; }
+  .upload-icon { font-size: 40px; margin-bottom: 1rem; opacity: 0.7; }
+  .upload-title { font-family: 'Syne', sans-serif; font-size: 20px; font-weight: 700; margin-bottom: 0.5rem; }
+  .upload-sub { color: var(--text2); font-size: 14px; margin-bottom: 1.5rem; line-height: 1.6; }
+  .upload-btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--accent); color: white;
+    border: none; padding: 10px 24px; border-radius: var(--radius-sm);
+    font-family: 'Syne', sans-serif; font-weight: 600; font-size: 14px;
+    cursor: pointer; transition: all 0.2s;
+  }
+  .upload-btn:hover { background: var(--accent2); transform: translateY(-1px); }
+  .upload-formats { font-size: 12px; color: var(--text3); margin-top: 1rem; font-family: 'IBM Plex Mono', monospace; }
+
+  /* Paste area */
+  .divider { display: flex; align-items: center; gap: 1rem; margin: 1.5rem 0; color: var(--text3); font-size: 13px; }
+  .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+  .paste-area {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); overflow: hidden;
+  }
+  .paste-header {
+    padding: 10px 16px; background: var(--surface2);
+    border-bottom: 1px solid var(--border);
+    font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--text3);
+    display: flex; align-items: center; gap: 8px;
+  }
+  .paste-header span { color: var(--text2); }
+  textarea {
+    width: 100%; background: transparent; border: none; outline: none;
+    color: var(--text2); font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+    padding: 1rem; resize: vertical; min-height: 120px; line-height: 1.6;
+  }
+  textarea::placeholder { color: var(--text3); }
+  .analyze-btn {
+    width: 100%; padding: 14px;
+    background: linear-gradient(135deg, var(--accent), #a855f7);
+    border: none; border-radius: var(--radius); color: white;
+    font-family: 'Syne', sans-serif; font-weight: 700; font-size: 16px;
+    cursor: pointer; margin-top: 1rem; transition: all 0.2s;
+    letter-spacing: 0.02em;
+  }
+  .analyze-btn:hover { opacity: 0.9; transform: translateY(-1px); box-shadow: 0 8px 30px rgba(108,99,255,0.3); }
+  .analyze-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; box-shadow: none; }
+
+  /* Results */
+  #results { display: none; }
+
+  /* Summary metrics */
+  .metrics-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 2rem; }
+  @media (max-width: 600px) { .metrics-grid { grid-template-columns: repeat(2, 1fr); } }
+  .metric-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 1.25rem;
+    position: relative; overflow: hidden;
+  }
+  .metric-card::after {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+  }
+  .metric-card.red::after { background: var(--red); }
+  .metric-card.amber::after { background: var(--amber); }
+  .metric-card.blue::after { background: var(--blue); }
+  .metric-card.green::after { background: var(--green); }
+  .metric-val { font-family: 'Syne', sans-serif; font-size: 28px; font-weight: 800; }
+  .metric-val.red { color: var(--red); }
+  .metric-val.amber { color: var(--amber); }
+  .metric-val.blue { color: var(--blue); }
+  .metric-val.green { color: var(--green); }
+  .metric-label { font-size: 12px; color: var(--text3); margin-top: 4px; font-family: 'IBM Plex Mono', monospace; }
+
+  /* Section */
+  .section-title {
+    font-family: 'Syne', sans-serif; font-size: 13px; font-weight: 700;
+    color: var(--text3); text-transform: uppercase; letter-spacing: 0.1em;
+    margin: 2rem 0 1rem; display: flex; align-items: center; gap: 10px;
+  }
+  .section-title::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+  /* Query cards */
+  .query-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); margin-bottom: 1rem; overflow: hidden;
+    transition: border-color 0.2s;
+  }
+  .query-card:hover { border-color: var(--border2); }
+  .query-card.critical { border-left: 3px solid var(--red); }
+  .query-card.moderate { border-left: 3px solid var(--amber); }
+  .query-card.low { border-left: 3px solid var(--green); }
+  .query-card.info { border-left: 3px solid var(--blue); }
+
+  .card-top {
+    padding: 1rem 1.25rem; display: flex;
+    align-items: flex-start; justify-content: space-between; gap: 12px;
+    cursor: pointer; user-select: none;
+  }
+  .card-top-left { flex: 1; min-width: 0; }
+  .card-title { font-family: 'Syne', sans-serif; font-size: 15px; font-weight: 600; margin-bottom: 6px; }
+  .card-meta { display: flex; flex-wrap: wrap; gap: 10px; }
+  .meta-chip {
+    font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+    color: var(--text3); display: flex; align-items: center; gap: 4px;
+  }
+  .meta-chip.highlight { color: var(--text2); }
+
+  .severity-badge {
+    font-size: 11px; font-weight: 600; padding: 4px 12px;
+    border-radius: 20px; white-space: nowrap; font-family: 'IBM Plex Mono', monospace;
+    flex-shrink: 0;
+  }
+  .severity-badge.critical { background: var(--red-bg); color: var(--red); border: 1px solid var(--red-border); }
+  .severity-badge.moderate { background: var(--amber-bg); color: var(--amber); border: 1px solid var(--amber-border); }
+  .severity-badge.low { background: var(--green-bg); color: var(--green); border: 1px solid var(--green-border); }
+  .severity-badge.info { background: var(--blue-bg); color: var(--blue); border: 1px solid #003040; }
+
+  .toggle-icon { color: var(--text3); font-size: 18px; transition: transform 0.2s; flex-shrink: 0; margin-left: 8px; }
+  .card-body { border-top: 1px solid var(--border); display: none; }
+  .card-body.open { display: block; }
+
+  .body-section { padding: 1rem 1.25rem; border-bottom: 1px solid var(--border); }
+  .body-section:last-child { border-bottom: none; }
+  .body-label {
+    font-size: 11px; font-weight: 600; color: var(--text3);
+    text-transform: uppercase; letter-spacing: 0.08em;
+    margin-bottom: 0.6rem; font-family: 'IBM Plex Mono', monospace;
+  }
+  .body-text { font-size: 13px; color: var(--text2); line-height: 1.7; }
+
+  .sql-block {
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); padding: 0.75rem 1rem;
+    font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+    color: var(--text2); line-height: 1.7; overflow-x: auto;
+    white-space: pre-wrap; word-break: break-all;
+  }
+  .sql-keyword { color: #a78bfa; font-weight: 500; }
+  .sql-table { color: #34d399; }
+  .sql-value { color: #fbbf24; }
+
+  .fix-block {
+    background: rgba(51,221,136,0.05); border: 1px solid var(--green-border);
+    border-radius: var(--radius-sm); padding: 0.75rem 1rem;
+  }
+  .fix-item { font-size: 13px; color: var(--text2); padding: 4px 0; display: flex; gap: 8px; line-height: 1.6; }
+  .fix-item::before { content: '→'; color: var(--green); flex-shrink: 0; font-family: 'IBM Plex Mono', monospace; }
+
+  .index-block {
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); padding: 0.75rem 1rem;
+    font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #a78bfa;
+    line-height: 1.8;
+  }
+
+  /* Chart */
+  .chart-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.5rem; margin-bottom: 2rem; }
+  .chart-title { font-family: 'Syne', sans-serif; font-size: 14px; font-weight: 600; margin-bottom: 1.25rem; color: var(--text2); }
+  .bar-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+  .bar-label { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text3); width: 180px; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bar-track { flex: 1; background: var(--surface3); border-radius: 3px; height: 8px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 3px; transition: width 0.6s ease; }
+  .bar-val { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--text2); width: 60px; text-align: right; flex-shrink: 0; }
+
+  /* Index recommendations */
+  .index-rec-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 1.25rem; margin-bottom: 0.75rem;
+  }
+  .index-sql { font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #a78bfa; line-height: 1.7; word-break: break-all; }
+
+  /* Reset */
+  .reset-btn {
+    display: flex; align-items: center; gap: 6px;
+    background: var(--surface2); border: 1px solid var(--border2);
+    color: var(--text2); padding: 8px 16px; border-radius: var(--radius-sm);
+    font-size: 13px; cursor: pointer; transition: all 0.2s; font-family: 'Syne', sans-serif; font-weight: 600;
+  }
+  .reset-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  .results-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem; }
+  .results-title { font-family: 'Syne', sans-serif; font-size: 22px; font-weight: 800; }
+  .results-sub { font-size: 13px; color: var(--text3); margin-top: 2px; font-family: 'IBM Plex Mono', monospace; }
+
+  /* Filter tabs */
+  .filter-tabs { display: flex; flex-direction: column; gap: 10px; margin-bottom: 1.5rem; }
+  .filter-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .filter-tab {
+    padding: 6px 16px; border-radius: 20px; border: 1px solid var(--border);
+    background: transparent; color: var(--text3); font-size: 13px; cursor: pointer;
+    font-family: 'Syne', sans-serif; font-weight: 600; transition: all 0.2s;
+  }
+  .filter-tab:hover { border-color: var(--border2); color: var(--text2); }
+  .filter-tab.active { background: var(--accent); border-color: var(--accent); color: white; }
+  .filter-tab-db.active { background: #1D9E75; border-color: #1D9E75; color: white; }
+  .db-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #1D9E75; margin-right: 5px; vertical-align: middle; }
+  .active-filter-badge {
+    font-size: 12px; color: var(--text2); background: var(--surface2);
+    border: 1px solid var(--border2); border-radius: 20px;
+    padding: 4px 14px; font-family: 'IBM Plex Mono', monospace;
+  }
+  .active-filter-badge strong { color: var(--accent2); font-weight: 500; }
+  .clear-filter-btn {
+    font-size: 12px; color: var(--text3); background: transparent;
+    border: 1px solid var(--border); border-radius: 20px;
+    padding: 4px 12px; cursor: pointer; font-family: 'Syne', sans-serif;
+    font-weight: 600; transition: all 0.2s;
+  }
+  .clear-filter-btn:hover { color: var(--red); border-color: var(--red); }
+  .filter-group-label {
+    font-size: 11px; font-weight: 600; color: var(--text3);
+    text-transform: uppercase; letter-spacing: 0.08em;
+    font-family: 'IBM Plex Mono', monospace;
+    display: flex; align-items: center; padding: 0 4px;
+  }
+
+  .empty-state { text-align: center; padding: 3rem 2rem; color: var(--text3); }
+  .empty-state p { font-size: 14px; margin-top: 0.5rem; }
+
+  /* Loading */
+  .loading { display: none; text-align: center; padding: 2rem; }
+  .loading.show { display: block; }
+  .spinner {
+    width: 32px; height: 32px; border: 2px solid var(--border);
+    border-top-color: var(--accent); border-radius: 50%;
+    animation: spin 0.8s linear infinite; margin: 0 auto 1rem;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .fade-in { animation: fadeIn 0.4s ease forwards; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="logo">
+      <div class="logo-icon">🔍</div>
+      <div>
+        <div class="logo-text">SlowQuery</div>
+        <div class="logo-sub">MySQL Log Analyzer</div>
+      </div>
+    </div>
+    <div class="header-badge">MySQL 5.7 / 8.x</div>
+  </div>
+
+  <!-- Upload Section -->
+  <div id="uploadSection">
+    <div class="upload-zone" id="dropZone">
+      <input type="file" id="fileInput" accept=".log,.txt">
+      <div class="upload-icon">📂</div>
+      <div class="upload-title">Drop your slow query log</div>
+      <div class="upload-sub">Drag & drop your MySQL slow query log file here<br>and get instant optimization insights</div>
+      <button class="upload-btn" onclick="document.getElementById('fileInput').click()">
+        Choose File
+      </button>
+      <div class="upload-formats">Accepts: .log &nbsp;·&nbsp; .txt &nbsp;·&nbsp; any text file</div>
+    </div>
+
+    <div class="divider">or paste log content directly</div>
+
+    <div class="paste-area">
+      <div class="paste-header">
+        <span style="color:#6c63ff">●</span>
+        <span>slow-query.log</span>
+      </div>
+      <textarea id="pasteInput" placeholder="Paste your MySQL slow query log content here...
+# Time: 2026-03-16T07:16:01.476342Z
+# User@Host: app_user[app_user] @  [10.1.5.1]  Id: 24
+# Query_time: 0.016111  Lock_time: 0.000002 Rows_sent: 1  Rows_examined: 383
+SELECT count(*) FROM orders WHERE status = 'PENDING';"></textarea>
+    </div>
+
+    <button class="analyze-btn" id="analyzeBtn" onclick="analyze()">
+      Analyze Log →
+    </button>
+  </div>
+
+  <!-- Loading -->
+  <div class="loading" id="loading">
+    <div class="spinner"></div>
+    <div style="color:var(--text3); font-family:'IBM Plex Mono',monospace; font-size:13px;">Parsing queries...</div>
+  </div>
+
+  <!-- Results -->
+  <div id="results">
+    <div class="results-header">
+      <div>
+        <div class="results-title">Analysis Report</div>
+        <div class="results-sub" id="resultsSubtitle"></div>
+      </div>
+      <button class="reset-btn" onclick="resetApp()">↩ New Analysis</button>
+    </div>
+
+    <!-- Metrics -->
+    <div class="metrics-grid" id="metricsGrid"></div>
+
+    <!-- Bar chart -->
+    <div class="chart-wrap" id="chartWrap">
+      <div class="chart-title">Query time breakdown (ms)</div>
+      <div id="barChart"></div>
+    </div>
+
+    <!-- Index recommendations -->
+    <div id="indexSection"></div>
+
+    <!-- Filter tabs -->
+    <div class="filter-tabs" id="filterTabs"></div>
+
+    <!-- Query cards -->
+    <div id="queryCards"></div>
+  </div>
+
+</div>
+
+<script>
+// ─── Parser ────────────────────────────────────────────────────────────────
+function parseSlowLog(text) {
+  console.log('[SlowQuery] parseSlowLog: input length=', text.length, 'lines=', text.split('\n').length);
+  const queries = [];
+
+  // Normalize line endings
+  const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+  console.log('[SlowQuery] parseSlowLog: normalized lines=', lines.length);
+
+  let i = 0;
+  let currentDb = '';
+
+  while (i < lines.length) {
+    const line = lines[i];
+
+    // Track current database from USE statements outside blocks
+    if (/^use\s+\w+\s*;$/i.test(line.trim())) {
+      const m = line.match(/use\s+(\w+)/i);
+      if (m) currentDb = m[1];
+      i++; continue;
+    }
+
+    // Skip non-query header lines
+    if (!line.startsWith('# User@Host:')) { i++; continue; }
+
+    // Found a query block — collect header lines
+    const userLine = line;
+    let statsLine = '';
+    let timeLine = '';
+
+    // Look back up to 3 lines for # Time:
+    for (let back = 1; back <= 3; back++) {
+      const prev = lines[i - back] || '';
+      if (prev.startsWith('# Time:')) { timeLine = prev; break; }
+    }
+
+    // Next line should be the stats line
+    if (i + 1 < lines.length && lines[i+1].startsWith('# Query_time:')) {
+      statsLine = lines[i+1];
+      i += 2;
+    } else {
+      i++; continue;
+    }
+
+    // Parse metadata
+    const timeMatch = timeLine.match(/# Time:\s*(.+)/);
+    const userMatch = userLine.match(/# User@Host:\s*(\S+)\[(\S+)\]\s*@\s*\[?([\d\.]*)/);
+    const queryTimeMatch = statsLine.match(/Query_time:\s*([\d\.]+)/);
+    const lockTimeMatch = statsLine.match(/Lock_time:\s*([\d\.]+)/);
+    const rowsSentMatch = statsLine.match(/Rows_sent:\s*(\d+)/);
+    const rowsExaminedMatch = statsLine.match(/Rows_examined:\s*(\d+)/);
+
+    // Collect SQL lines until next # User@Host: or # Time: block
+    const sqlLines = [];
+    let blockDb = currentDb;
+
+    while (i < lines.length) {
+      const l = lines[i];
+
+      // Stop at next query block
+      if (l.startsWith('# User@Host:')) break;
+      if (l.startsWith('# Time:') && i + 1 < lines.length && lines[i+1] && lines[i+1].startsWith('# User@Host:')) break;
+
+      // Skip comment/meta lines
+      if (l.startsWith('#')) { i++; continue; }
+      // Skip server startup lines
+      if (l.startsWith('/usr/') || l.startsWith('Tcp port') || l.startsWith('Time ')) { i++; continue; }
+      // Track USE inside block
+      if (/^use\s+\w+\s*;$/i.test(l.trim())) {
+        const m = l.match(/use\s+(\w+)/i);
+        if (m) { blockDb = m[1]; currentDb = m[1]; }
+        i++; continue;
+      }
+      // Skip SET timestamp
+      if (l.startsWith('SET timestamp=')) { i++; continue; }
+      // Skip throttle/system lines
+      if (l.startsWith('throttle:') || l.trim() === '') { i++; continue; }
+
+      sqlLines.push(l);
+      i++;
+    }
+
+    const sql = sqlLines.join('\n').trim();
+
+    // Skip if no real SQL or it's just a system message
+    if (!sql || sql.startsWith('throttle:') || !/SELECT|INSERT|UPDATE|DELETE|CALL/i.test(sql)) continue;
+
+    queries.push({
+      time: timeMatch ? timeMatch[1].trim() : '',
+      user: userMatch ? userMatch[1] : 'unknown',
+      host: userMatch ? (userMatch[3] || '') : '',
+      queryTime: queryTimeMatch ? parseFloat(queryTimeMatch[1]) : 0,
+      lockTime: lockTimeMatch ? parseFloat(lockTimeMatch[1]) : 0,
+      rowsSent: rowsSentMatch ? parseInt(rowsSentMatch[1]) : 0,
+      rowsExamined: rowsExaminedMatch ? parseInt(rowsExaminedMatch[1]) : 0,
+      database: blockDb,
+      sql: sql
+    });
+  }
+  console.log('[SlowQuery] parseSlowLog: returning', queries.length, 'queries');
+  return queries;
+}
+
+// ─── Analyzer ──────────────────────────────────────────────────────────────
+function analyzeQuery(q) {
+  const sql = q.sql.toUpperCase();
+  const issues = [];
+  const fixes = [];
+  const indexes = [];
+  let severity = 'info';
+  let title = '';
+  let category = '';
+
+  // Extract main table
+  const tableMatch = q.sql.match(/FROM\s+`?(\w+)`?/i) || q.sql.match(/UPDATE\s+`?(\w+)`?/i) || q.sql.match(/INTO\s+`?(\w+)`?/i);
+  const mainTable = tableMatch ? tableMatch[1] : 'unknown';
+
+  // Detect patterns
+  const hasSelectStar = sql.includes('SELECT *') || sql.includes('SELECT `');
+  const hasNoIndex = q.rowsExamined > 0 && q.rowsSent > 0 && (q.rowsExamined / Math.max(q.rowsSent, 1)) > 10;
+  const hasMassiveIn = (q.sql.match(/,/g) || []).length > 20 && sql.includes(' IN ');
+  const hasJoin = sql.includes('JOIN');
+  const hasCount = sql.includes('COUNT(');
+  const hasNoWhere = !sql.includes('WHERE');
+  const hasLike = sql.includes('LIKE ');
+  const hasOrderBy = sql.includes('ORDER BY');
+  const hasGroupBy = sql.includes('GROUP BY');
+  const isSlowJoin = hasJoin && q.queryTime > 0.005;
+  const isMissingIndex = q.rowsExamined > 100 && q.rowsSent < q.rowsExamined * 0.1;
+  const isDuplicate = false; // handled separately
+
+  // Determine title
+  if (hasMassiveIn) {
+    title = `${mainTable} — massive IN() clause`;
+    category = 'schema';
+  } else if (isSlowJoin) {
+    title = `${mainTable} — slow JOIN query`;
+    category = 'query';
+  } else if (hasCount && hasJoin) {
+    title = `${mainTable} — COUNT with unnecessary JOIN`;
+    category = 'query';
+  } else if (isMissingIndex) {
+    title = `${mainTable} — missing index (full scan)`;
+    category = 'index';
+  } else if (hasSelectStar) {
+    title = `${mainTable} — SELECT * over-fetching`;
+    category = 'query';
+  } else if (hasNoWhere && hasCount) {
+    title = `${mainTable} — unfiltered COUNT`;
+    category = 'query';
+  } else {
+    title = `${mainTable} — slow query`;
+    category = 'query';
+  }
+
+  // Severity
+  const timeMs = q.queryTime * 1000;
+  if (timeMs > 10 || q.rowsExamined > 300 || hasMassiveIn) severity = 'critical';
+  else if (timeMs > 3 || q.rowsExamined > 50 || isSlowJoin) severity = 'moderate';
+  else if (timeMs > 1 || q.rowsExamined > 10) severity = 'low';
+  else severity = 'info';
+
+  // Issues
+  if (hasMassiveIn) {
+    issues.push(`Massive IN() clause with ${(q.sql.match(/,/g)||[]).length + 1} values — MySQL scans more rows`);
+  }
+  if (isMissingIndex) {
+    issues.push(`Examined ${q.rowsExamined} rows but only returned ${q.rowsSent} — likely missing index`);
+  }
+  if (hasSelectStar) {
+    issues.push('SELECT * loads all columns including unused ones — wastes memory and I/O');
+  }
+  if (isSlowJoin && !hasCount) {
+    issues.push('JOIN is slow — check if foreign key columns are indexed on both sides');
+  }
+  if (hasCount && hasJoin) {
+    issues.push('JOIN may be unnecessary for COUNT — can filter directly on the base table');
+  }
+  if (q.lockTime > 0.001) {
+    issues.push(`Lock time: ${(q.lockTime * 1000).toFixed(2)}ms — table may be under write contention`);
+  }
+  if (issues.length === 0) {
+    issues.push(`Query time: ${timeMs.toFixed(2)}ms — logged because it exceeded the threshold`);
+  }
+
+  // Fixes
+  if (hasMassiveIn) {
+    fixes.push('Cache permission/role lookups at application startup — they rarely change per request');
+    fixes.push('Consider a JOIN to a role_permissions table instead of a long IN() list');
+    fixes.push(`Add composite index on (${getWhereColumns(q.sql).join(', ')})`);
+  }
+  if (isMissingIndex) {
+    const cols = getWhereColumns(q.sql);
+    if (cols.length) {
+      fixes.push(`Add index on: ${cols.join(', ')}`);
+      indexes.push(`ALTER TABLE \`${mainTable}\` ADD INDEX idx_${cols.join('_')} (${cols.map(c=>`\`${c}\``).join(', ')});`);
+    }
+  }
+  if (hasSelectStar) {
+    fixes.push('Use projections — select only the columns your code actually uses');
+    fixes.push('In Spring/JPA: use interface projections or @Query with specific fields');
+  }
+  if (hasCount && hasJoin) {
+    fixes.push('Remove the JOIN and filter directly on the foreign key column');
+    const cols = getWhereColumns(q.sql);
+    if (cols.length) {
+      indexes.push(`ALTER TABLE \`${mainTable}\` ADD INDEX idx_${cols.join('_')} (${cols.map(c=>`\`${c}\``).join(', ')});`);
+    }
+  }
+  if (fixes.length === 0) {
+    fixes.push('Review query execution plan with: EXPLAIN ' + q.sql.split('\n')[0]);
+    fixes.push('Consider adding query result caching if data doesn\'t change frequently');
+  }
+
+  return { ...q, title, severity, category, issues, fixes, indexes };
+}
+
+function getWhereColumns(sql) {
+  const cols = [];
+  const whereMatch = sql.match(/WHERE\s+(.+?)(?:\s+ORDER|\s+GROUP|\s+LIMIT|$)/is);
+  if (!whereMatch) return cols;
+  const conditions = whereMatch[1];
+  const colMatches = conditions.matchAll(/`?(\w+)`?\s*(?:=|IN|IS|!=|<|>)/gi);
+  for (const m of colMatches) {
+    const col = m[1].toLowerCase();
+    if (!['and','or','not','null'].includes(col)) cols.push(col);
+  }
+  return [...new Set(cols)].slice(0, 3);
+}
+
+function detectDuplicates(analyzed) {
+  const sqlMap = {};
+  for (const q of analyzed) {
+    const key = q.sql.trim().replace(/\s+/g,' ').substring(0, 200);
+    if (!sqlMap[key]) sqlMap[key] = [];
+    sqlMap[key].push(q);
+  }
+  for (const q of analyzed) {
+    const key = q.sql.trim().replace(/\s+/g,' ').substring(0, 200);
+    if (sqlMap[key].length > 1) {
+      q.isDuplicate = true;
+      q.duplicateCount = sqlMap[key].length;
+    }
+  }
+}
+
+// ─── Render ────────────────────────────────────────────────────────────────
+function highlightSQL(sql) {
+  const keywords = ['SELECT','FROM','WHERE','JOIN','INNER','LEFT','RIGHT','ON','AND','OR','NOT','IN','COUNT','AS','USE','SET','INSERT','UPDATE','DELETE','GROUP BY','ORDER BY','HAVING','LIMIT','DISTINCT','UNION','VALUES','INTO'];
+  let h = sql.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  keywords.forEach(k => {
+    h = h.replace(new RegExp('\\b' + k + '\\b', 'gi'), `<span class="sql-keyword">${k}</span>`);
+  });
+  h = h.replace(/`(\w+)`/g, '<span class="sql-table">`$1`</span>');
+  h = h.replace(/'([^']*)'/g, '<span class="sql-value">\'$1\'</span>');
+  return h;
+}
+
+function renderMetrics(analyzed) {
+  const critical = analyzed.filter(q => q.severity === 'critical').length;
+  const moderate = analyzed.filter(q => q.severity === 'moderate').length;
+  const dups = analyzed.filter(q => q.isDuplicate).length;
+  const maxRows = Math.max(...analyzed.map(q => q.rowsExamined));
+
+  document.getElementById('metricsGrid').innerHTML = `
+    <div class="metric-card red">
+      <div class="metric-val red">${critical}</div>
+      <div class="metric-label">critical queries</div>
+    </div>
+    <div class="metric-card amber">
+      <div class="metric-val amber">${moderate}</div>
+      <div class="metric-label">moderate issues</div>
+    </div>
+    <div class="metric-card blue">
+      <div class="metric-val blue">${analyzed.length}</div>
+      <div class="metric-label">total queries</div>
+    </div>
+    <div class="metric-card green">
+      <div class="metric-val green">${dups}</div>
+      <div class="metric-label">duplicate queries</div>
+    </div>
+  `;
+}
+
+function renderChart(analyzed) {
+  const top = [...analyzed].sort((a,b) => b.queryTime - a.queryTime).slice(0, 8);
+  const max = Math.max(...top.map(q => q.queryTime * 1000));
+  const colors = { critical: '#ff5566', moderate: '#ffaa33', low: '#33dd88', info: '#44aaff' };
+  let html = '';
+  for (const q of top) {
+    const ms = (q.queryTime * 1000).toFixed(2);
+    const pct = max > 0 ? (q.queryTime * 1000 / max * 100) : 0;
+    const label = q.sql.trim().split('\n')[0].replace(/\s+/g,' ').substring(0, 35) + '...';
+    html += `
+      <div class="bar-row">
+        <div class="bar-label" title="${q.sql.replace(/"/g,'&quot;')}">${label}</div>
+        <div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${colors[q.severity]}"></div></div>
+        <div class="bar-val">${ms}ms</div>
+      </div>`;
+  }
+  document.getElementById('barChart').innerHTML = html;
+}
+
+function renderIndexes(analyzed) {
+  const allIndexes = [];
+  for (const q of analyzed) {
+    for (const idx of q.indexes || []) {
+      if (!allIndexes.includes(idx)) allIndexes.push(idx);
+    }
+  }
+  if (!allIndexes.length) {
+    document.getElementById('indexSection').innerHTML = '';
+    return;
+  }
+  let html = `<div class="section-title">Recommended indexes</div>`;
+  for (const idx of allIndexes) {
+    html += `<div class="index-rec-card"><div class="index-sql">${idx}</div></div>`;
+  }
+  document.getElementById('indexSection').innerHTML = html;
+}
+
+function renderFilters(analyzed) {
+  const all = analyzed.length;
+  const critical = analyzed.filter(q => q.severity === 'critical').length;
+  const moderate = analyzed.filter(q => q.severity === 'moderate').length;
+  const dups = analyzed.filter(q => q.isDuplicate).length;
+  const dbs = [...new Set(analyzed.map(q => q.database).filter(Boolean))].sort();
+
+  // Reset active filter state
+  activeFilters = { severity: 'all', db: 'all' };
+
+  let html = '';
+
+  // ── Severity row ──
+  html += `<div class="filter-row">`;
+  html += `<div class="filter-group-label">Severity</div>`;
+  html += `<button class="filter-tab active" onclick="filterCards('severity','all',this)" data-group="severity" data-value="all">All (${all})</button>`;
+  if (critical) html += `<button class="filter-tab" onclick="filterCards('severity','critical',this)" data-group="severity" data-value="critical">🔴 Critical (${critical})</button>`;
+  if (moderate) html += `<button class="filter-tab" onclick="filterCards('severity','moderate',this)" data-group="severity" data-value="moderate">🟡 Moderate (${moderate})</button>`;
+  const low = analyzed.filter(q => q.severity === 'low').length;
+  if (low) html += `<button class="filter-tab" onclick="filterCards('severity','low',this)" data-group="severity" data-value="low">🟢 Low (${low})</button>`;
+  if (dups) html += `<button class="filter-tab" onclick="filterCards('severity','duplicate',this)" data-group="severity" data-value="duplicate">🔁 Duplicates (${dups})</button>`;
+  html += `</div>`;
+
+  // ── Database row (only if multiple DBs) ──
+  if (dbs.length > 1) {
+    html += `<div class="filter-row">`;
+    html += `<div class="filter-group-label">Database</div>`;
+    html += `<button class="filter-tab filter-tab-db active" onclick="filterCards('db','all',this)" data-group="db" data-value="all">All DBs</button>`;
+    dbs.forEach(db => {
+      const count = analyzed.filter(q => q.database === db).length;
+      html += `<button class="filter-tab filter-tab-db" onclick="filterCards('db','${db}',this)" data-group="db" data-value="${db}"><span class="db-dot"></span>${db} (${count})</button>`;
+    });
+    html += `</div>`;
+
+    // ── Active filter summary badge ──
+    html += `<div id="activeFilterSummary" style="display:none" class="filter-row">
+      <div class="active-filter-badge" id="activeFilterBadge"></div>
+      <button class="clear-filter-btn" onclick="resetFilters()">✕ Clear filters</button>
+    </div>`;
+  }
+
+  document.getElementById('filterTabs').innerHTML = html;
+
+  // Override applyFilters to also update the summary badge
+  const origApply = applyFilters;
+}
+
+function renderCards(analyzed) {
+  const order = { critical: 0, moderate: 1, low: 2, info: 3 };
+  const sorted = [...analyzed].sort((a,b) => order[a.severity] - order[b.severity]);
+
+  let html = '';
+  for (let i = 0; i < sorted.length; i++) {
+    const q = sorted[i];
+    const ms = (q.queryTime * 1000).toFixed(2);
+    const severityLabel = q.severity.charAt(0).toUpperCase() + q.severity.slice(1);
+    const dupNote = q.isDuplicate ? `<span class="meta-chip highlight">🔁 runs ${q.duplicateCount}x</span>` : '';
+    const dbNote = q.database ? `<span class="meta-chip">db: ${q.database}</span>` : '';
+    const timeColor = q.severity === 'critical' ? 'color:var(--red)' : q.severity === 'moderate' ? 'color:var(--amber)' : '';
+
+    html += `
+    <div class="query-card ${q.severity} fade-in" data-severity="${q.severity}" data-dup="${q.isDuplicate||false}" data-db="${q.database||''}" style="animation-delay:${i*0.04}s">
+      <div class="card-top" onclick="toggleCard(this)">
+        <div class="card-top-left">
+          <div class="card-title">${escHtml(q.title)}</div>
+          <div class="card-meta">
+            <span class="meta-chip highlight" style="${timeColor}">⏱ ${ms}ms</span>
+            <span class="meta-chip">🔍 ${q.rowsExamined} rows examined</span>
+            <span class="meta-chip">📤 ${q.rowsSent} rows returned</span>
+            ${dbNote}
+            ${dupNote}
+          </div>
+        </div>
+        <span class="severity-badge ${q.severity}">${severityLabel}</span>
+        <span class="toggle-icon">›</span>
+      </div>
+      <div class="card-body">
+        <div class="body-section">
+          <div class="body-label">SQL Query</div>
+          <div class="sql-block">${highlightSQL(q.sql)}</div>
+        </div>
+        <div class="body-section">
+          <div class="body-label">Issues found</div>
+          ${q.issues.map(i => `<div class="body-text" style="padding:3px 0">⚠ ${escHtml(i)}</div>`).join('')}
+        </div>
+        <div class="body-section">
+          <div class="body-label">Recommended fixes</div>
+          <div class="fix-block">
+            ${q.fixes.map(f => `<div class="fix-item">${escHtml(f)}</div>`).join('')}
+          </div>
+        </div>
+        ${q.indexes && q.indexes.length ? `
+        <div class="body-section">
+          <div class="body-label">Index to add</div>
+          <div class="index-block">${q.indexes.map(escHtml).join('\n')}</div>
+        </div>` : ''}
+        <div class="body-section">
+          <div class="body-label">Stats</div>
+          <div style="display:flex;gap:24px;flex-wrap:wrap">
+            ${q.time ? `<div><div class="body-label" style="margin-bottom:2px">Time</div><div style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--text2)">${escHtml(q.time)}</div></div>` : ''}
+            <div><div class="body-label" style="margin-bottom:2px">User</div><div style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--text2)">${escHtml(q.user)}</div></div>
+            <div><div class="body-label" style="margin-bottom:2px">Lock time</div><div style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--text2)">${(q.lockTime*1000).toFixed(3)}ms</div></div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  if (!html) {
+    html = `<div class="empty-state">
+      <div style="font-size:32px">🔎</div>
+      <p>No queries found matching this filter.</p>
+    </div>`;
+  }
+
+  document.getElementById('queryCards').innerHTML = html;
+}
+
+function escHtml(str) {
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ─── Interactions ──────────────────────────────────────────────────────────
+function toggleCard(el) {
+  const body = el.nextElementSibling;
+  const icon = el.querySelector('.toggle-icon');
+  const isOpen = body.classList.contains('open');
+  body.classList.toggle('open', !isOpen);
+  icon.style.transform = isOpen ? '' : 'rotate(90deg)';
+}
+
+let allAnalyzed = [];
+
+// Active filter state
+let activeFilters = { severity: 'all', db: 'all' };
+
+function filterCards(type, value, btn) {
+  // Update active state
+  activeFilters[type] = value;
+
+  // Update button active states per group
+  document.querySelectorAll(`.filter-tab[data-group="${type}"]`).forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+
+  // Update visible count badge
+  applyFilters();
+}
+
+function applyFilters() {
+  let visible = 0;
+  document.querySelectorAll('.query-card').forEach(card => {
+    const severityMatch =
+      activeFilters.severity === 'all' ? true :
+      activeFilters.severity === 'duplicate' ? card.dataset.dup === 'true' :
+      card.dataset.severity === activeFilters.severity;
+
+    const dbMatch =
+      activeFilters.db === 'all' ? true :
+      card.dataset.db === activeFilters.db;
+
+    const show = severityMatch && dbMatch;
+    card.style.display = show ? 'block' : 'none';
+    if (show) visible++;
+  });
+
+  // Update result count
+  const subtitle = document.getElementById('resultsSubtitle');
+  const total = document.querySelectorAll('.query-card').length;
+  if (visible === total) {
+    subtitle.textContent = subtitle.dataset.original || subtitle.textContent;
+  } else {
+    if (!subtitle.dataset.original) subtitle.dataset.original = subtitle.textContent;
+    subtitle.textContent = `Showing ${visible} of ${total} queries · filtered`;
+  }
+
+  // Show empty state if nothing matches
+  const noResults = document.getElementById('noFilterResults');
+  if (visible === 0) {
+    if (!noResults) {
+      const el = document.createElement('div');
+      el.id = 'noFilterResults';
+      el.className = 'empty-state';
+      el.innerHTML = '<div style="font-size:32px">🔎</div><p>No queries match the selected filters.</p><button onclick="resetFilters()" style="margin-top:1rem;padding:8px 20px;background:var(--accent);color:white;border:none;border-radius:6px;cursor:pointer;font-family:Syne,sans-serif;font-weight:600;border-radius:var(--radius-sm)">Clear Filters</button>';
+      document.getElementById('queryCards').appendChild(el);
+    }
+  } else {
+    if (noResults) noResults.remove();
+  }
+
+  // Update active filter summary
+  const summary = document.getElementById('activeFilterSummary');
+  const badge = document.getElementById('activeFilterBadge');
+  if (summary && badge) {
+    const isFiltered = activeFilters.severity !== 'all' || activeFilters.db !== 'all';
+    summary.style.display = isFiltered ? 'flex' : 'none';
+    if (isFiltered) {
+      const parts = [];
+      if (activeFilters.severity !== 'all') parts.push(`Severity: <strong>${activeFilters.severity}</strong>`);
+      if (activeFilters.db !== 'all') parts.push(`DB: <strong>${activeFilters.db}</strong>`);
+      badge.innerHTML = `Showing ${visible} result${visible !== 1 ? 's' : ''} &nbsp;·&nbsp; ${parts.join(' &nbsp;+&nbsp; ')}`;
+    }
+  }
+}
+
+function resetFilters() {
+  activeFilters = { severity: 'all', db: 'all' };
+  document.querySelectorAll('.filter-tab').forEach(t => {
+    t.classList.remove('active');
+    if (t.dataset.value === 'all') t.classList.add('active');
+  });
+  applyFilters();
+}
+
+function analyze() {
+  console.log('[SlowQuery] ===== analyze() called =====');
+  const text = document.getElementById('pasteInput').value.trim();
+  console.log('[SlowQuery] Input text length:', text.length);
+  console.log('[SlowQuery] First 200 chars:', text.substring(0, 200));
+
+  if (!text) {
+    console.warn('[SlowQuery] No input text — aborting');
+    document.getElementById('pasteInput').style.borderColor = 'var(--red)';
+    setTimeout(() => document.getElementById('pasteInput').style.borderColor = '', 1500);
+    return;
+  }
+
+  document.getElementById('uploadSection').style.display = 'none';
+  document.getElementById('loading').classList.add('show');
+
+  setTimeout(() => {
+    console.log('[SlowQuery] Starting parseSlowLog...');
+    let parsed;
+    try {
+      parsed = parseSlowLog(text);
+      console.log('[SlowQuery] parseSlowLog result count:', parsed.length);
+      parsed.forEach((q, i) => {
+        console.log(`[SlowQuery] Q${i+1}: queryTime=${q.queryTime}s | rowsExamined=${q.rowsExamined} | db=${q.database} | sql=${q.sql.substring(0,80)}`);
+      });
+    } catch(e) {
+      console.error('[SlowQuery] parseSlowLog threw error:', e);
+      document.getElementById('loading').classList.remove('show');
+      document.getElementById('uploadSection').style.display = 'block';
+      return;
+    }
+
+    if (!parsed.length) {
+      console.warn('[SlowQuery] No queries parsed — check log format');
+      document.getElementById('loading').classList.remove('show');
+      document.getElementById('uploadSection').style.display = 'block';
+      document.getElementById('pasteInput').style.borderColor = 'var(--red)';
+      document.getElementById('pasteInput').placeholder = '⚠ No queries found. Make sure this is a valid MySQL slow query log with # Query_time entries.';
+      setTimeout(() => { document.getElementById('pasteInput').style.borderColor = ''; }, 3000);
+      return;
+    }
+
+    console.log('[SlowQuery] Running analyzeQuery on', parsed.length, 'queries...');
+    let analyzed;
+    try {
+      analyzed = parsed.map(analyzeQuery);
+      console.log('[SlowQuery] analyzeQuery done');
+      analyzed.forEach((q, i) => {
+        console.log(`[SlowQuery] A${i+1}: severity=${q.severity} | title="${q.title}" | issues=${q.issues.length} | fixes=${q.fixes.length}`);
+      });
+    } catch(e) {
+      console.error('[SlowQuery] analyzeQuery threw error:', e);
+      document.getElementById('loading').classList.remove('show');
+      document.getElementById('uploadSection').style.display = 'block';
+      return;
+    }
+
+    detectDuplicates(analyzed);
+    allAnalyzed = analyzed;
+
+    console.log('[SlowQuery] Rendering results...');
+    try {
+      document.getElementById('loading').classList.remove('show');
+      document.getElementById('results').style.display = 'block';
+      document.getElementById('resultsSubtitle').textContent = `${analyzed.length} queries analyzed · ${analyzed.filter(q=>q.severity==='critical').length} need immediate attention`;
+      console.log('[SlowQuery] renderMetrics...');
+      renderMetrics(analyzed);
+      console.log('[SlowQuery] renderChart...');
+      renderChart(analyzed);
+      console.log('[SlowQuery] renderIndexes...');
+      renderIndexes(analyzed);
+      console.log('[SlowQuery] renderFilters...');
+      renderFilters(analyzed);
+      console.log('[SlowQuery] renderCards...');
+      renderCards(analyzed);
+      console.log('[SlowQuery] ===== All done! =====');
+    } catch(e) {
+      console.error('[SlowQuery] Render error:', e);
+    }
+  }, 400);
+}
+
+function resetApp() {
+  document.getElementById('results').style.display = 'none';
+  document.getElementById('uploadSection').style.display = 'block';
+  document.getElementById('pasteInput').value = '';
+  document.getElementById('pasteInput').style.borderColor = '';
+}
+
+// ─── File handling ──────────────────────────────────────────────────────────
+document.getElementById('fileInput').addEventListener('change', function(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(ev) {
+    document.getElementById('pasteInput').value = ev.target.result;
+    analyze();
+  };
+  reader.readAsText(file);
+});
+
+const dropZone = document.getElementById('dropZone');
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    document.getElementById('pasteInput').value = ev.target.result;
+    analyze();
+  };
+  reader.readAsText(file);
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,1324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>LogLens — Multi-File Analyzer</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet"/>
+<style>
+:root{
+  --bg:#0a0c10;--surface:#0f1318;--surface2:#161b22;--surface3:#1c2330;
+  --border:#21262d;--border2:#30363d;
+  --text:#e6edf3;--text2:#8b949e;--text3:#484f58;
+  --accent:#58a6ff;--accent2:#1f6feb;
+  --green:#3fb950;--yellow:#d29922;--red:#f85149;--purple:#bc8cff;--cyan:#39c5cf;
+  --err-bg:rgba(248,81,73,.07);--warn-bg:rgba(210,153,34,.07);
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--text);font-family:'Syne',sans-serif;height:100vh;overflow:hidden;display:flex;flex-direction:column;}
+
+/* ── TOPBAR ── */
+.topbar{display:flex;align-items:center;gap:12px;padding:9px 18px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;}
+.logo{font-size:16px;font-weight:800;letter-spacing:-.5px;white-space:nowrap;}
+.logo span{color:var(--accent);}
+.logo-sub{font-size:9.5px;color:var(--text3);font-family:'JetBrains Mono',monospace;white-space:nowrap;}
+.top-stats{display:flex;gap:12px;margin-left:auto;font-size:10.5px;font-family:'JetBrains Mono',monospace;}
+.stat{display:flex;align-items:center;gap:4px;color:var(--text2);}
+.sdot{width:6px;height:6px;border-radius:50%;flex-shrink:0;}
+.sv{font-weight:700;}
+.sv.ct{color:var(--accent);}
+.sv.ce{color:var(--red);}
+.sv.cw{color:var(--yellow);}
+.sv.ci{color:var(--green);}
+
+/* ── SHELL ── */
+.shell{display:grid;grid-template-columns:280px 1fr;flex:1;overflow:hidden;}
+
+/* ── SIDEBAR ── */
+.sidebar{background:var(--surface);border-right:1px solid var(--border);overflow-y:auto;display:flex;flex-direction:column;flex-shrink:0;}
+.sb{padding:11px 12px;border-bottom:1px solid var(--border);}
+.sbt{font-size:8.5px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--text3);margin-bottom:8px;}
+
+/* DROP ZONE */
+.drop-zone{border:1.5px dashed var(--border2);border-radius:8px;padding:13px 10px;text-align:center;cursor:pointer;transition:.18s;position:relative;overflow:hidden;}
+.drop-zone:hover,.drop-zone.drag{border-color:var(--accent);background:rgba(88,166,255,.04);}
+.drop-zone input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%;}
+.dz-ico{font-size:20px;margin-bottom:3px;}
+.dz-lbl{font-size:10.5px;color:var(--text2);line-height:1.5;}
+.dz-lbl strong{color:var(--accent);}
+.dz-sub{font-size:9.5px;color:var(--text3);margin-top:3px;}
+
+/* FILE CARDS */
+.flist{display:flex;flex-direction:column;gap:4px;margin-top:8px;}
+.fcard{background:var(--surface2);border:1.5px solid var(--border);border-radius:7px;overflow:hidden;}
+.fcard.off{opacity:.38;}
+.fc-top{display:flex;align-items:center;gap:6px;padding:6px 8px;}
+.fc-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+.fc-name{flex:1;font-size:10.5px;font-family:'JetBrains Mono',monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;}
+.fc-badge{font-size:8px;font-weight:700;padding:1px 5px;border-radius:3px;text-transform:uppercase;letter-spacing:.3px;flex-shrink:0;}
+.fcb-app{background:rgba(88,166,255,.14);color:var(--accent);}
+.fcb-api{background:rgba(188,140,255,.14);color:var(--purple);}
+.fcb-custom{background:rgba(57,197,207,.1);color:var(--cyan);}
+.fc-cnt{font-size:9.5px;color:var(--text3);font-family:'JetBrains Mono',monospace;flex-shrink:0;}
+.fc-tog{width:26px;height:14px;background:var(--surface3);border-radius:10px;position:relative;cursor:pointer;flex-shrink:0;border:1px solid var(--border2);transition:.14s;}
+.fc-tog.on{background:var(--accent2);border-color:var(--accent);}
+.fc-tog::after{content:'';position:absolute;width:8px;height:8px;border-radius:50%;background:#fff;top:2px;left:2px;transition:.14s;}
+.fc-tog.on::after{left:14px;}
+.fc-btn{color:var(--text3);cursor:pointer;font-size:13px;flex-shrink:0;line-height:1;padding:0 1px;}
+.fc-btn:hover{color:var(--accent);}
+.fc-btn.del:hover{color:var(--red);}
+.fc-stats{display:flex;gap:6px;padding:0 8px 6px;font-family:'JetBrains Mono',monospace;font-size:9px;}
+.fc-stat{color:var(--text3);}
+.fc-stat span{color:var(--text2);}
+.no-files{text-align:center;padding:10px;font-size:11px;color:var(--text3);}
+
+/* INPUTS */
+.inp{width:100%;background:var(--surface2);border:1px solid var(--border2);border-radius:6px;padding:6px 9px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:11px;outline:none;transition:.12s;}
+.inp:focus{border-color:var(--accent);}
+.inp::placeholder{color:var(--text3);}
+.inp-u:focus{border-color:var(--cyan);}
+.inp-r:focus{border-color:var(--purple);}
+.srch-wrap{position:relative;}
+.srch-ico{position:absolute;left:9px;top:50%;transform:translateY(-50%);color:var(--text3);pointer-events:none;font-size:13px;}
+.srch-wrap .inp{padding-left:27px;}
+
+/* PILLS */
+.pills{display:flex;flex-wrap:wrap;gap:4px;}
+.pill{padding:3px 9px;border-radius:20px;font-size:10px;font-weight:600;cursor:pointer;border:1px solid transparent;transition:.1s;font-family:'JetBrains Mono',monospace;user-select:none;}
+.pl-all{border-color:var(--border2);color:var(--text2);}
+.pl-all.on{background:var(--accent2);border-color:var(--accent);color:#fff;}
+.pl-err{border-color:rgba(248,81,73,.3);color:var(--red);}
+.pl-err.on{background:var(--red);color:#fff;}
+.pl-warn{border-color:rgba(210,153,34,.3);color:var(--yellow);}
+.pl-warn.on{background:var(--yellow);color:#000;}
+.pl-info{border-color:rgba(63,185,80,.3);color:var(--green);}
+.pl-info.on{background:var(--green);color:#000;}
+.pl-dbg{border-color:rgba(88,166,255,.3);color:var(--accent);}
+.pl-dbg.on{background:var(--accent);color:#000;}
+.pl-trc{border-color:rgba(57,197,207,.3);color:var(--cyan);}
+.pl-trc.on{background:var(--cyan);color:#000;}
+.pl-app{border-color:rgba(88,166,255,.3);color:var(--accent);}
+.pl-app.on{background:var(--accent);color:#000;}
+.pl-api{border-color:rgba(188,140,255,.3);color:var(--purple);}
+.pl-api.on{background:var(--purple);color:#000;}
+
+/* DATE */
+.date-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px;}
+.date-grid .inp{font-size:9.5px;padding:5px 6px;}
+
+/* BUTTONS */
+.btn-row{display:flex;gap:6px;}
+.btn{flex:1;padding:7px;border-radius:6px;border:none;cursor:pointer;font-family:'Syne',sans-serif;font-size:11.5px;font-weight:700;transition:.12s;}
+.btn-p{background:var(--accent2);color:#fff;}
+.btn-p:hover{background:var(--accent);}
+.btn-g{background:var(--surface2);color:var(--text2);border:1px solid var(--border2);}
+.btn-g:hover{border-color:var(--accent);color:var(--text);}
+
+/* ── MAIN ── */
+.main{display:flex;flex-direction:column;overflow:hidden;min-width:0;}
+
+/* TOOLBAR */
+.toolbar{display:flex;align-items:center;gap:7px;padding:7px 14px;background:var(--surface2);border-bottom:1px solid var(--border);flex-shrink:0;flex-wrap:wrap;row-gap:5px;}
+.t-info{font-size:11px;color:var(--text2);font-family:'JetBrains Mono',monospace;white-space:nowrap;}
+.t-info strong{color:var(--text);}
+.spacer{flex:1;}
+.vtabs{display:flex;gap:2px;}
+.vtab{padding:4px 11px;border-radius:5px;border:1px solid var(--border2);background:transparent;color:var(--text2);cursor:pointer;font-size:10.5px;font-family:'Syne',sans-serif;font-weight:600;transition:.1s;white-space:nowrap;}
+.vtab.on{background:var(--surface3);border-color:var(--accent);color:var(--accent);}
+.hl-btn{padding:4px 10px;border-radius:5px;border:1px solid var(--border2);background:transparent;color:var(--text2);cursor:pointer;font-size:10.5px;font-family:'Syne',sans-serif;font-weight:600;transition:.1s;white-space:nowrap;}
+.hl-btn.on{border-color:var(--red);color:var(--red);background:rgba(248,81,73,.07);}
+.exp-btn{padding:4px 10px;border-radius:5px;border:1px solid var(--border2);background:var(--surface2);color:var(--text2);cursor:pointer;font-size:10.5px;font-family:'Syne',sans-serif;font-weight:600;transition:.1s;white-space:nowrap;}
+.exp-btn:hover{border-color:var(--green);color:var(--green);}
+
+/* ACTIVE FILTER CHIPS */
+.filter-chips{display:flex;gap:5px;flex-wrap:wrap;padding:5px 14px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;min-height:0;}
+.filter-chips:empty{display:none;}
+.fchip{display:flex;align-items:center;gap:5px;padding:2px 8px;border-radius:20px;font-size:9.5px;font-family:'JetBrains Mono',monospace;font-weight:600;background:var(--surface2);border:1px solid var(--border2);color:var(--text2);}
+.fchip .x{cursor:pointer;color:var(--text3);font-size:11px;}
+.fchip .x:hover{color:var(--red);}
+
+/* LOG AREA */
+.log-area{flex:1;overflow-y:auto;position:relative;}
+
+/* TABLE */
+.log-tbl{width:100%;border-collapse:collapse;font-family:'JetBrains Mono',monospace;font-size:11px;}
+.log-tbl thead th{position:sticky;top:0;z-index:10;background:var(--surface2);color:var(--text3);padding:6px 10px;text-align:left;font-size:8.5px;letter-spacing:1.2px;text-transform:uppercase;border-bottom:1px solid var(--border);font-family:'Syne',sans-serif;font-weight:700;white-space:nowrap;cursor:pointer;user-select:none;}
+.log-tbl thead th:hover{color:var(--text);}
+.log-tbl thead th.sa::after{content:' ↑';}
+.log-tbl thead th.sd::after{content:' ↓';}
+.log-tbl tbody tr{border-bottom:1px solid rgba(255,255,255,.04);cursor:pointer;transition:background .06s;}
+.log-tbl tbody tr:hover{background:rgba(255,255,255,.03);}
+.log-tbl tbody tr.sel{background:rgba(88,166,255,.08)!important;box-shadow:inset 2px 0 0 var(--accent);}
+.log-tbl tbody tr.re{background:var(--err-bg);}
+.log-tbl tbody tr.rw{background:var(--warn-bg);}
+.log-tbl tbody tr.re:hover{background:rgba(248,81,73,.11);}
+.log-tbl tbody tr.rw:hover{background:rgba(210,153,34,.10);}
+.log-tbl td{padding:5px 10px;vertical-align:middle;}
+.td-bar{padding:0!important;width:3px;}
+.td-bar-inner{width:3px;height:100%;min-height:22px;}
+.td-time{color:var(--text2);white-space:nowrap;font-size:10px;}
+.td-file{white-space:nowrap;}
+.td-src{white-space:nowrap;}
+.td-lvl{white-space:nowrap;}
+.td-log{color:var(--text2);max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:9.5px;}
+.td-req{color:var(--purple);font-size:10px;max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.td-uid{color:var(--cyan);font-size:10px;max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.td-msg{max-width:340px;}
+.td-msg .mt{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text);}
+
+/* BADGES */
+.lb{display:inline-block;padding:1px 6px;border-radius:3px;font-size:9px;font-weight:700;}
+.lb-ERROR{background:rgba(248,81,73,.18);color:var(--red);}
+.lb-WARN{background:rgba(210,153,34,.18);color:var(--yellow);}
+.lb-INFO{background:rgba(63,185,80,.13);color:var(--green);}
+.lb-DEBUG{background:rgba(88,166,255,.13);color:var(--accent);}
+.lb-TRACE{background:rgba(57,197,207,.13);color:var(--cyan);}
+.sb2{display:inline-block;padding:1px 5px;border-radius:3px;font-size:8px;font-weight:700;text-transform:uppercase;}
+.sb2-APP{background:rgba(88,166,255,.09);color:var(--accent);}
+.sb2-API{background:rgba(188,140,255,.09);color:var(--purple);}
+.sb2-CUSTOM{background:rgba(57,197,207,.08);color:var(--cyan);}
+.ftag{display:inline-block;padding:1px 5px;border-radius:3px;font-size:9px;font-weight:700;max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle;}
+
+/* DETAIL PANEL */
+.detail{border-top:1px solid var(--border);background:var(--surface);flex-shrink:0;overflow:hidden;transition:max-height .18s ease;max-height:0;}
+.detail.open{max-height:260px;overflow-y:auto;}
+.detail-hdr{display:flex;align-items:center;gap:8px;padding:8px 14px;background:var(--surface2);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:5;}
+.detail-hdr .ttl{font-size:10.5px;font-weight:700;color:var(--text2);font-family:'Syne',sans-serif;}
+.detail-hdr .cls{margin-left:auto;cursor:pointer;color:var(--text3);font-size:14px;}
+.detail-hdr .cls:hover{color:var(--red);}
+.detail-body{padding:10px 14px;display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}
+.df label{font-size:8px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:3px;font-family:'Syne',sans-serif;}
+.df value{display:block;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text);word-break:break-all;}
+.df.full{grid-column:1/-1;}
+.df value.vu{color:var(--cyan);}
+.df value.vr{color:var(--purple);}
+.stk{grid-column:1/-1;background:var(--surface3);border:1px solid rgba(248,81,73,.2);border-radius:5px;padding:8px 11px;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--red);white-space:pre-wrap;word-break:break-all;line-height:1.6;max-height:100px;overflow-y:auto;}
+.stk.plain{color:var(--text2);border-color:var(--border);}
+.track-row{grid-column:1/-1;display:flex;gap:6px;flex-wrap:wrap;}
+.tbtn{padding:4px 10px;border-radius:4px;border:1px solid var(--border2);background:var(--surface2);color:var(--text2);cursor:pointer;font-size:10px;font-family:'Syne',sans-serif;font-weight:600;transition:.1s;}
+.tbtn:hover{border-color:var(--accent);color:var(--accent);}
+
+/* TRACE VIEW */
+.trace-view{padding:12px 14px;display:flex;flex-direction:column;gap:12px;}
+.tg{border-radius:7px;overflow:hidden;border:1px solid var(--border);}
+.tg-hdr{display:flex;align-items:center;gap:8px;padding:7px 12px;background:var(--surface2);border-bottom:1px solid var(--border);font-family:'JetBrains Mono',monospace;font-size:10.5px;flex-wrap:wrap;gap:7px;}
+.tg-uid{color:var(--cyan);}
+.tg-rid{color:var(--purple);}
+.tg-fcnt{margin-left:auto;font-size:9.5px;color:var(--text2);}
+.eb{font-size:9px;font-weight:700;padding:1px 6px;border-radius:3px;background:rgba(248,81,73,.17);color:var(--red);}
+.wb{font-size:9px;font-weight:700;padding:1px 6px;border-radius:3px;background:rgba(210,153,34,.14);color:var(--yellow);}
+
+/* CROSS-FILE VIEW */
+.cross-view{padding:12px 14px;display:flex;flex-direction:column;gap:10px;}
+.cv-section-title{font-size:9px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);margin-bottom:6px;font-family:'Syne',sans-serif;}
+.cg{border-radius:7px;overflow:hidden;border:1px solid var(--border);margin-bottom:10px;}
+.cg-hdr{display:flex;align-items:center;gap:8px;padding:7px 12px;background:var(--surface2);border-bottom:1px solid var(--border);flex-wrap:wrap;}
+.cg-key{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;}
+.cg-key.ku{color:var(--cyan);}
+.cg-key.kr{color:var(--purple);}
+.cg-chips{display:flex;gap:4px;flex-wrap:wrap;margin-left:auto;}
+.cg-chip{font-size:8.5px;font-weight:700;padding:2px 6px;border-radius:3px;}
+.cg-timeline{display:flex;flex-direction:column;}
+.cg-row{display:flex;align-items:center;gap:8px;padding:5px 12px;border-bottom:1px solid rgba(255,255,255,.04);font-family:'JetBrains Mono',monospace;font-size:10.5px;cursor:pointer;transition:background .08s;}
+.cg-row:last-child{border-bottom:none;}
+.cg-row:hover{background:rgba(255,255,255,.02);}
+.cg-time{color:var(--text3);white-space:nowrap;font-size:9.5px;width:145px;flex-shrink:0;}
+.cg-file{width:78px;flex-shrink:0;}
+.cg-lvl{width:56px;flex-shrink:0;}
+.cg-msg{flex:1;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+
+/* ERRORS VIEW */
+.errors-view{padding:12px 14px;display:flex;flex-direction:column;gap:12px;}
+.err-sec{background:var(--surface2);border-radius:8px;overflow:hidden;border:1px solid var(--border);}
+.err-sec-hdr{padding:8px 13px;display:flex;align-items:center;gap:7px;font-size:11.5px;font-weight:700;border-bottom:1px solid var(--border);}
+.err-list{display:flex;flex-direction:column;}
+.err-row{display:flex;align-items:center;gap:8px;padding:6px 13px;border-bottom:1px solid rgba(255,255,255,.04);cursor:pointer;font-family:'JetBrains Mono',monospace;font-size:10.5px;transition:.08s;}
+.err-row:last-child{border-bottom:none;}
+.err-row:hover{background:rgba(255,255,255,.03);}
+.err-time{color:var(--text3);white-space:nowrap;font-size:9.5px;flex-shrink:0;}
+.err-msg{flex:1;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+
+/* EMPTY STATE */
+.empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:10px;color:var(--text3);}
+.es-ico{font-size:38px;}
+.es-ttl{font-size:13px;font-weight:600;color:var(--text2);}
+.es-sub{font-size:11px;text-align:center;}
+
+/* HIGHLIGHT */
+.hl{background:rgba(210,153,34,.32);color:var(--yellow);border-radius:2px;padding:0 1px;}
+
+/* MODAL */
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:500;display:flex;align-items:center;justify-content:center;}
+.modal-bg.hidden{display:none;}
+.modal{background:var(--surface);border:1px solid var(--border2);border-radius:10px;padding:20px;width:380px;max-width:94vw;}
+.modal h3{font-size:13px;font-weight:700;margin-bottom:12px;}
+.modal-row{margin-bottom:9px;}
+.modal-row label{font-size:10px;color:var(--text2);display:block;margin-bottom:4px;font-family:'Syne',sans-serif;}
+.modal select{width:100%;background:var(--surface2);border:1px solid var(--border2);border-radius:6px;padding:6px 9px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:11px;outline:none;}
+.modal-btns{display:flex;gap:7px;margin-top:14px;justify-content:flex-end;}
+.modal-btn{padding:6px 16px;border-radius:6px;border:none;cursor:pointer;font-family:'Syne',sans-serif;font-size:11px;font-weight:700;transition:.1s;}
+.modal-btn-p{background:var(--accent2);color:#fff;}
+.modal-btn-p:hover{background:var(--accent);}
+.modal-btn-g{background:var(--surface2);color:var(--text2);border:1px solid var(--border2);}
+.modal-btn-g:hover{border-color:var(--accent);color:var(--text);}
+.color-picker{display:flex;gap:5px;flex-wrap:wrap;margin-top:5px;}
+.cswatch{width:18px;height:18px;border-radius:50%;cursor:pointer;border:2px solid transparent;transition:.1s;}
+.cswatch.sel{border-color:#fff;}
+
+/* SCROLLBAR */
+::-webkit-scrollbar{width:5px;height:5px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px;}
+::-webkit-scrollbar-thumb:hover{background:var(--text3);}
+</style>
+</head>
+<body>
+
+<!-- TOPBAR -->
+<div class="topbar">
+  <div class="logo">LOG<span>LENS</span></div>
+  <span class="logo-sub">multi-file analyzer</span>
+  <div class="top-stats">
+    <div class="stat"><div class="sdot" style="background:var(--accent)"></div><span class="sv ct" id="s-total">0</span><span>total</span></div>
+    <div class="stat"><div class="sdot" style="background:var(--red)"></div><span class="sv ce" id="s-err">0</span><span>errors</span></div>
+    <div class="stat"><div class="sdot" style="background:var(--yellow)"></div><span class="sv cw" id="s-warn">0</span><span>warn</span></div>
+    <div class="stat"><div class="sdot" style="background:var(--green)"></div><span class="sv ci" id="s-info">0</span><span>info</span></div>
+    <div class="stat"><div class="sdot" style="background:var(--text3)"></div><span class="sv" style="color:var(--text2)" id="s-files">0</span><span>files</span></div>
+  </div>
+</div>
+
+<div class="shell">
+
+<!-- SIDEBAR -->
+<div class="sidebar">
+
+  <div class="sb">
+    <div class="sbt">Log Files</div>
+    <div class="drop-zone" id="dz">
+      <input type="file" id="file-input" accept=".log,.txt" multiple/>
+      <div class="dz-ico">📂</div>
+      <div class="dz-lbl">Drop <strong>multiple</strong> log files here</div>
+      <div class="dz-sub">APP &amp; API logs — each gets its own color</div>
+    </div>
+    <div class="flist" id="flist"></div>
+  </div>
+
+  <div class="sb">
+    <div class="sbt">Search</div>
+    <div class="srch-wrap">
+      <span class="srch-ico">⌕</span>
+      <input class="inp" type="text" id="f-text" placeholder="Message, logger…" autocomplete="off"/>
+    </div>
+  </div>
+
+  <div class="sb">
+    <div class="sbt">Track by ID</div>
+    <input class="inp inp-u" type="text" id="f-uuid" placeholder="User UUID…" autocomplete="off"/>
+    <input class="inp inp-r" type="text" id="f-reqid" placeholder="Request ID…" style="margin-top:5px" autocomplete="off"/>
+  </div>
+
+  <div class="sb">
+    <div class="sbt">Log Level</div>
+    <div class="pills" id="level-pills">
+      <span class="pill pl-all on" data-l="ALL">All</span>
+      <span class="pill pl-err" data-l="ERROR">ERROR</span>
+      <span class="pill pl-warn" data-l="WARN">WARN</span>
+      <span class="pill pl-info" data-l="INFO">INFO</span>
+      <span class="pill pl-dbg" data-l="DEBUG">DEBUG</span>
+      <span class="pill pl-trc" data-l="TRACE">TRACE</span>
+    </div>
+  </div>
+
+  <div class="sb">
+    <div class="sbt">Source Type</div>
+    <div class="pills" id="src-pills">
+      <span class="pill pl-all on" data-s="ALL">All</span>
+      <span class="pill pl-app" data-s="APP">APP</span>
+      <span class="pill pl-api" data-s="API">API</span>
+    </div>
+  </div>
+
+  <div class="sb">
+    <div class="sbt">File</div>
+    <div class="pills" id="file-pills">
+      <span class="pill pl-all on" data-f="ALL">All Files</span>
+    </div>
+  </div>
+
+  <div class="sb">
+    <div class="sbt">Logger Filter</div>
+    <input class="inp" type="text" id="f-logger" placeholder="e.g. directpay.service…" autocomplete="off"/>
+  </div>
+
+  <div class="sb">
+    <div class="sbt">Date / Time Range</div>
+    <div class="date-grid">
+      <input class="inp" type="datetime-local" id="f-from" title="From"/>
+      <input class="inp" type="datetime-local" id="f-to" title="To"/>
+    </div>
+  </div>
+
+  <div class="sb">
+    <div class="sbt">App Version</div>
+    <input class="inp" type="text" id="f-ver" placeholder="e.g. 1.2.3" autocomplete="off"/>
+  </div>
+
+  <div class="sb">
+    <div class="btn-row">
+      <button class="btn btn-p" onclick="applyFilters()">Apply</button>
+      <button class="btn btn-g" onclick="clearFilters()">Clear All</button>
+    </div>
+  </div>
+
+</div><!-- /sidebar -->
+
+<!-- MAIN -->
+<div class="main">
+
+  <div class="toolbar">
+    <span class="t-info">Showing <strong id="shown-count">0</strong> of <strong id="total-count">0</strong></span>
+    <div class="spacer"></div>
+    <div class="vtabs">
+      <button class="vtab on" data-v="table" onclick="setView('table')">Table</button>
+      <button class="vtab" data-v="trace" onclick="setView('trace')">Trace</button>
+      <button class="vtab" data-v="cross" onclick="setView('cross')">Cross-File</button>
+      <button class="vtab" data-v="errors" onclick="setView('errors')">Errors</button>
+    </div>
+    <button class="hl-btn on" id="hl-btn" onclick="toggleHighlight()">🔴 Errors</button>
+    <button class="exp-btn" onclick="exportCSV()">↓ CSV</button>
+  </div>
+
+  <!-- Active filter chips shown here -->
+  <div class="filter-chips" id="filter-chips"></div>
+
+  <div class="log-area" id="log-area">
+    <div class="empty-state">
+      <div class="es-ico">🗂️</div>
+      <div class="es-ttl">No log files loaded</div>
+      <div class="es-sub">Drop one or more .log files into the left panel</div>
+    </div>
+  </div>
+
+  <div class="detail" id="detail">
+    <div class="detail-hdr">
+      <span class="ttl">Entry Detail</span>
+      <span id="detail-badges"></span>
+      <span class="cls" onclick="closeDetail()">✕</span>
+    </div>
+    <div class="detail-body" id="detail-body"></div>
+  </div>
+
+</div><!-- /main -->
+</div><!-- /shell -->
+
+<!-- FILE SETTINGS MODAL -->
+<div class="modal-bg hidden" id="modal">
+  <div class="modal">
+    <h3>File Settings</h3>
+    <div class="modal-row">
+      <label>Alias / Label</label>
+      <input class="inp" type="text" id="m-alias" placeholder="Short name for this file"/>
+    </div>
+    <div class="modal-row">
+      <label>Source Type</label>
+      <select id="m-src">
+        <option value="APP">APP</option>
+        <option value="API">API</option>
+        <option value="CUSTOM">CUSTOM</option>
+      </select>
+    </div>
+    <div class="modal-row">
+      <label>Color</label>
+      <div class="color-picker" id="color-picker"></div>
+    </div>
+    <div class="modal-btns">
+      <button class="modal-btn modal-btn-g" onclick="closeModal()">Cancel</button>
+      <button class="modal-btn modal-btn-p" onclick="saveModal()">Save</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════
+// CONSTANTS & STATE
+// ═══════════════════════════════════════════════════════
+const FILE_COLORS = [
+  '#58a6ff','#bc8cff','#3fb950','#f0883e',
+  '#39c5cf','#d29922','#f85149','#a5f3fc',
+  '#e879f9','#86efac','#fbbf24','#34d399'
+];
+
+// All loaded files
+let files = [];
+// Merged sorted log entries from all enabled files
+let allLogs = [];
+// What's currently shown (after filters)
+let displayLogs = [];
+
+// Current UI state
+let currentView = 'table';
+let highlightErrors = true;
+let selectedRow = null;
+let sortCol = 'time';
+let sortDir = 1; // 1=asc, -1=desc
+
+// Filter state — all start blank/ALL so nothing blocks initial load
+const F = {
+  text: '',
+  uuid: '',
+  reqid: '',
+  level: 'ALL',
+  src: 'ALL',
+  fileId: 'ALL',
+  logger: '',
+  from: '',
+  to: '',
+  version: ''
+};
+
+// Modal state
+let modalFileId = null;
+let modalColor = null;
+
+// ═══════════════════════════════════════════════════════
+// LOG PARSER
+// ═══════════════════════════════════════════════════════
+// Expected format from logback-spring.xml:
+//   %d | %X{app-version} | %level | %logger{36} | %X{req-id} | %X{uuid} | %msg
+// e.g.: 2024-01-15 10:23:45.123 | 1.0.0 | INFO  | com.example.Foo | req-abc | uuid-xyz | Some message
+
+// Strip ANSI escape codes (produced by %highlight in logback)
+function stripAnsi(s) {
+  return s.replace(/\x1B\[[0-9;]*[mGKHF]/g, '').replace(/\x1B\([A-Z]/g, '');
+}
+
+// Known log levels
+const LEVELS = new Set(['TRACE','DEBUG','INFO','WARN','ERROR','FATAL','OFF']);
+
+// Main regex — date/time | anything | LEVEL | anything | anything | anything | rest
+const LINE_RE = /^(\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}[.,]?\d*)\s*\|\s*(.*?)\s*\|\s*(TRACE|DEBUG|INFO|WARN|ERROR|FATAL)\s*\|\s*(.*?)\s*\|\s*(.*?)\s*\|\s*(.*?)\s*\|\s*(.*)$/i;
+
+// Fallback: just starts with a timestamp
+const TS_RE = /^(\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}[.,]?\d*)/;
+
+function parseLine(raw, fileId) {
+  const clean = stripAnsi(raw);
+
+  // Try primary regex
+  let m = clean.match(LINE_RE);
+  if (m) {
+    return {
+      time: m[1].trim(),
+      version: m[2].trim(),
+      level: m[3].trim().toUpperCase(),
+      logger: m[4].trim(),
+      reqid: m[5].trim(),
+      uuid: m[6].trim(),
+      msg: m[7].trim(),
+      fileId, raw
+    };
+  }
+
+  // Try splitting on | and matching by position
+  const parts = clean.split('|').map(s => s.trim());
+  if (parts.length >= 7 && TS_RE.test(parts[0])) {
+    const lvl = parts[2].trim().toUpperCase();
+    if (LEVELS.has(lvl)) {
+      return {
+        time: parts[0].trim(),
+        version: parts[1].trim(),
+        level: lvl,
+        logger: parts[3].trim(),
+        reqid: parts[4].trim(),
+        uuid: parts[5].trim(),
+        msg: parts.slice(6).join('|').trim(),
+        fileId, raw
+      };
+    }
+  }
+
+  // Partial fallback: if line starts with a timestamp, treat as raw log entry
+  // so stack traces / continuation lines starting with a date still get captured
+  const tsm = clean.match(TS_RE);
+  if (tsm && parts.length >= 2) {
+    // Try to extract level anywhere in the first few fields
+    let level = 'INFO';
+    for (let i = 1; i < Math.min(parts.length, 5); i++) {
+      const candidate = parts[i].trim().toUpperCase().replace(/[^A-Z]/g, '');
+      if (LEVELS.has(candidate)) { level = candidate; break; }
+    }
+    return {
+      time: tsm[1],
+      version: '',
+      level,
+      logger: parts[3]?.trim() || '',
+      reqid: parts[4]?.trim() || '',
+      uuid: parts[5]?.trim() || '',
+      msg: parts.slice(6).join('|').trim() || clean.slice(tsm[1].length).trim(),
+      fileId, raw
+    };
+  }
+
+  return null;
+}
+
+function parseFileText(text, fileId) {
+  const lines = text.split(/\r?\n/);
+  const result = [];
+  let current = null;
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    const parsed = parseLine(line, fileId);
+    if (parsed) {
+      if (current) result.push(current);
+      current = parsed;
+    } else if (current) {
+      // Continuation / stack trace line
+      current.msg += '\n' + line;
+    }
+  }
+  if (current) result.push(current);
+  return result;
+}
+
+function autoDetectSource(filename) {
+  return filename.toLowerCase().includes('api') ? 'API' : 'APP';
+}
+
+// ═══════════════════════════════════════════════════════
+// FILE LOADING
+// ═══════════════════════════════════════════════════════
+async function loadFiles(fileList) {
+  const parseWarnings = [];
+
+  for (const file of fileList) {
+    const id = 'f' + Date.now() + Math.random().toString(36).slice(2, 7);
+    const colorIdx = files.length % FILE_COLORS.length;
+    const source = autoDetectSource(file.name);
+    let text;
+    try { text = await file.text(); }
+    catch(e) { console.error('Could not read', file.name, e); continue; }
+
+    const entries = parseFileText(text, id);
+
+    if (entries.length === 0) {
+      // Capture first non-empty line as sample for the warning
+      const sample = text.split('\n').find(l => l.trim()) || '';
+      parseWarnings.push({ name: file.name, sample: sample.substring(0, 300) });
+    }
+
+    files.push({
+      id,
+      name: file.name,
+      alias: file.name.replace(/\.[^.]+$/, ''),
+      source,
+      color: FILE_COLORS[colorIdx],
+      enabled: true,
+      entries,
+      customColor: false,
+      parseWarning: entries.length === 0
+    });
+  }
+
+  rebuildMergedLogs();
+  renderFileList();
+  renderFilePills();
+  runDisplay();
+
+  if (parseWarnings.length > 0) {
+    showParseWarning(parseWarnings);
+  }
+}
+
+function showParseWarning(warnings) {
+  // Show an overlay in the log area with the unmatched sample so user can see
+  const area = document.getElementById('log-area');
+  if (allLogs.length > 0) return; // if other files parsed fine, don't overwrite
+  const items = warnings.map(w =>
+    `<div style="margin-bottom:12px">
+      <div style="color:var(--yellow);font-family:'JetBrains Mono',monospace;font-size:11px;margin-bottom:5px">📄 ${x(w.name)}</div>
+      <div style="background:var(--surface3);border:1px solid var(--border2);border-radius:5px;padding:8px 10px;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text2);word-break:break-all;line-height:1.7">${x(w.sample)}</div>
+    </div>`
+  ).join('');
+  area.innerHTML = `
+    <div style="padding:28px;max-width:700px;margin:0 auto">
+      <div style="color:var(--red);font-size:15px;font-weight:700;margin-bottom:6px">⚠ Could not parse log entries</div>
+      <div style="color:var(--text2);font-size:12px;margin-bottom:18px;line-height:1.6">
+        The file was loaded but 0 lines matched the expected format.<br/>
+        Expected: <span style="font-family:'JetBrains Mono',monospace;color:var(--cyan)">2024-01-01 10:00:00.000 | version | LEVEL | logger | req-id | uuid | message</span>
+      </div>
+      <div style="font-size:11px;color:var(--text3);font-family:'Syne',sans-serif;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px">First line of your file(s):</div>
+      ${items}
+      <div style="margin-top:16px;color:var(--text2);font-size:11.5px;line-height:1.7">
+        Common issues:<br/>
+        • ANSI colour codes from <code style="background:var(--surface3);padding:1px 4px;border-radius:3px">%highlight</code> in logback — these are stripped automatically<br/>
+        • Different field separator (not <code style="background:var(--surface3);padding:1px 4px;border-radius:3px">|</code>)<br/>
+        • More or fewer fields than 7 pipe-separated columns<br/>
+        • Compressed <code style="background:var(--surface3);padding:1px 4px;border-radius:3px">.gz</code> files — please decompress first
+      </div>
+    </div>`;
+}
+
+function rebuildMergedLogs() {
+  allLogs = [];
+  for (const f of files) {
+    if (f.enabled) allLogs.push(...f.entries);
+  }
+  allLogs.sort((a, b) => a.time.localeCompare(b.time));
+  updateTopStats(allLogs);
+  document.getElementById('s-files').textContent = files.filter(f => f.enabled).length;
+}
+
+function toggleFileEnabled(id) {
+  const f = files.find(x => x.id === id);
+  if (f) f.enabled = !f.enabled;
+  rebuildMergedLogs();
+  renderFileList();
+  runDisplay();
+}
+
+function removeFile(id) {
+  files = files.filter(x => x.id !== id);
+  // Reassign colors for remaining files
+  files.forEach((f, i) => { if (!f.customColor) f.color = FILE_COLORS[i % FILE_COLORS.length]; });
+  // If the removed file was selected in file filter, reset
+  if (F.fileId === id) F.fileId = 'ALL';
+  rebuildMergedLogs();
+  renderFileList();
+  renderFilePills();
+  runDisplay();
+}
+
+// ═══════════════════════════════════════════════════════
+// FILE LIST UI
+// ═══════════════════════════════════════════════════════
+function renderFileList() {
+  const el = document.getElementById('flist');
+  if (files.length === 0) {
+    el.innerHTML = '<div class="no-files" style="text-align:center;padding:8px;font-size:10.5px;color:var(--text3)">No files loaded</div>';
+    return;
+  }
+
+  el.innerHTML = files.map(f => {
+    const errCnt = f.entries.filter(e => e.level === 'ERROR').length;
+    const warnCnt = f.entries.filter(e => e.level === 'WARN').length;
+    const first = f.entries[0]?.time.split(' ')[0] || '';
+    const last = f.entries[f.entries.length - 1]?.time.split(' ')[0] || '';
+    const srcClass = 'fcb-' + f.source.toLowerCase();
+    return `
+      <div class="fcard ${f.enabled ? '' : 'off'}" id="fc-${f.id}">
+        <div class="fc-top">
+          <div class="fc-dot" style="background:${f.color}"></div>
+          <span class="fc-name" title="${x(f.name)}">${x(f.alias)}</span>
+          <span class="fc-badge ${srcClass}">${f.source}</span>
+          <span class="fc-cnt">${f.entries.length}</span>
+          <div class="fc-tog ${f.enabled ? 'on' : ''}" onclick="toggleFileEnabled('${f.id}')" title="${f.enabled ? 'Disable' : 'Enable'}"></div>
+          <span class="fc-btn" onclick="openModal('${f.id}')" title="Settings">⚙</span>
+          <span class="fc-btn del" onclick="removeFile('${f.id}')" title="Remove">✕</span>
+        </div>
+        <div class="fc-stats">
+          ${errCnt ? `<span class="fc-stat" style="color:var(--red)">${errCnt} ERR</span>` : ''}
+          ${warnCnt ? `<span class="fc-stat" style="color:var(--yellow)">${warnCnt} WARN</span>` : ''}
+          ${first ? `<span class="fc-stat">${first}${first !== last ? ' → ' + last : ''}</span>` : ''}
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function renderFilePills() {
+  const el = document.getElementById('file-pills');
+  el.innerHTML =
+    `<span class="pill pl-all ${F.fileId === 'ALL' ? 'on' : ''}" data-f="ALL">All Files</span>` +
+    files.map(f =>
+      `<span class="pill ${F.fileId === f.id ? 'on' : ''}" data-f="${f.id}"
+         style="border-color:${f.color}55;color:${f.color};${F.fileId === f.id ? 'background:' + f.color + '22;' : ''}"
+       >${x(f.alias)}</span>`
+    ).join('');
+
+  el.querySelectorAll('.pill').forEach(p => p.addEventListener('click', () => {
+    F.fileId = p.dataset.f;
+    el.querySelectorAll('.pill').forEach(q => q.classList.remove('on'));
+    p.classList.add('on');
+    runDisplay();
+  }));
+}
+
+// ═══════════════════════════════════════════════════════
+// STATS
+// ═══════════════════════════════════════════════════════
+function updateTopStats(logs) {
+  document.getElementById('s-total').textContent = logs.length;
+  document.getElementById('s-err').textContent   = logs.filter(l => l.level === 'ERROR').length;
+  document.getElementById('s-warn').textContent  = logs.filter(l => l.level === 'WARN').length;
+  document.getElementById('s-info').textContent  = logs.filter(l => l.level === 'INFO').length;
+}
+
+// ═══════════════════════════════════════════════════════
+// FILTERING
+// ═══════════════════════════════════════════════════════
+// Apply filters reads the current F state and filters allLogs
+function computeFiltered() {
+  return allLogs.filter(e => {
+    // Level
+    if (F.level !== 'ALL' && e.level !== F.level) return false;
+    // Source type
+    if (F.src !== 'ALL') {
+      const src = files.find(f => f.id === e.fileId)?.source || 'APP';
+      if (src !== F.src) return false;
+    }
+    // File
+    if (F.fileId !== 'ALL' && e.fileId !== F.fileId) return false;
+    // UUID
+    if (F.uuid && !e.uuid.toLowerCase().includes(F.uuid)) return false;
+    // Request ID
+    if (F.reqid && !e.reqid.toLowerCase().includes(F.reqid)) return false;
+    // Logger
+    if (F.logger && !e.logger.toLowerCase().includes(F.logger)) return false;
+    // Version
+    if (F.version && !e.version.toLowerCase().includes(F.version)) return false;
+    // Full text
+    if (F.text && !(
+      e.msg.toLowerCase().includes(F.text) ||
+      e.logger.toLowerCase().includes(F.text)
+    )) return false;
+    // Date range
+    if (F.from && e.time < F.from) return false;
+    if (F.to   && e.time > F.to)   return false;
+    return true;
+  });
+}
+
+// Called when user clicks Apply
+function applyFilters() {
+  // Read all input values into F
+  F.text    = document.getElementById('f-text').value.trim().toLowerCase();
+  F.uuid    = document.getElementById('f-uuid').value.trim().toLowerCase();
+  F.reqid   = document.getElementById('f-reqid').value.trim().toLowerCase();
+  F.logger  = document.getElementById('f-logger').value.trim().toLowerCase();
+  F.version = document.getElementById('f-ver').value.trim().toLowerCase();
+  F.from    = document.getElementById('f-from').value.replace('T', ' ');
+  F.to      = document.getElementById('f-to').value.replace('T', ' ');
+  runDisplay();
+}
+
+// Clear all filters and show everything
+function clearFilters() {
+  F.text = ''; F.uuid = ''; F.reqid = ''; F.logger = '';
+  F.version = ''; F.from = ''; F.to = '';
+  F.level = 'ALL'; F.src = 'ALL'; F.fileId = 'ALL';
+
+  document.getElementById('f-text').value  = '';
+  document.getElementById('f-uuid').value  = '';
+  document.getElementById('f-reqid').value = '';
+  document.getElementById('f-logger').value= '';
+  document.getElementById('f-ver').value   = '';
+  document.getElementById('f-from').value  = '';
+  document.getElementById('f-to').value    = '';
+
+  document.querySelectorAll('#level-pills .pill').forEach(p => p.classList.toggle('on', p.dataset.l === 'ALL'));
+  document.querySelectorAll('#src-pills .pill').forEach(p => p.classList.toggle('on', p.dataset.s === 'ALL'));
+  renderFilePills();
+  runDisplay();
+}
+
+// runDisplay — compute filtered set and render
+function runDisplay() {
+  displayLogs = computeFiltered();
+  document.getElementById('shown-count').textContent = displayLogs.length;
+  document.getElementById('total-count').textContent = allLogs.length;
+  renderFilterChips();
+  renderCurrentView();
+}
+
+// ═══════════════════════════════════════════════════════
+// ACTIVE FILTER CHIPS
+// ═══════════════════════════════════════════════════════
+function renderFilterChips() {
+  const el = document.getElementById('filter-chips');
+  const chips = [];
+  if (F.level !== 'ALL') chips.push({ label: 'Level: ' + F.level, clear: () => { F.level = 'ALL'; document.querySelectorAll('#level-pills .pill').forEach(p => p.classList.toggle('on', p.dataset.l === 'ALL')); runDisplay(); } });
+  if (F.src !== 'ALL')   chips.push({ label: 'Src: ' + F.src, clear: () => { F.src = 'ALL'; document.querySelectorAll('#src-pills .pill').forEach(p => p.classList.toggle('on', p.dataset.s === 'ALL')); runDisplay(); } });
+  if (F.fileId !== 'ALL') { const fn = files.find(f => f.id === F.fileId)?.alias || F.fileId; chips.push({ label: 'File: ' + fn, clear: () => { F.fileId = 'ALL'; renderFilePills(); runDisplay(); } }); }
+  if (F.text)    chips.push({ label: 'Text: ' + F.text,    clear: () => { F.text = '';    document.getElementById('f-text').value  = ''; runDisplay(); } });
+  if (F.uuid)    chips.push({ label: 'UUID: ' + F.uuid,    clear: () => { F.uuid = '';    document.getElementById('f-uuid').value  = ''; runDisplay(); } });
+  if (F.reqid)   chips.push({ label: 'Req: '  + F.reqid,   clear: () => { F.reqid = '';   document.getElementById('f-reqid').value = ''; runDisplay(); } });
+  if (F.logger)  chips.push({ label: 'Logger: '+ F.logger,  clear: () => { F.logger = '';  document.getElementById('f-logger').value= ''; runDisplay(); } });
+  if (F.version) chips.push({ label: 'Ver: '  + F.version,  clear: () => { F.version = ''; document.getElementById('f-ver').value   = ''; runDisplay(); } });
+  if (F.from)    chips.push({ label: 'From: ' + F.from.slice(0,16), clear: () => { F.from = ''; document.getElementById('f-from').value = ''; runDisplay(); } });
+  if (F.to)      chips.push({ label: 'To: '   + F.to.slice(0,16),   clear: () => { F.to = '';   document.getElementById('f-to').value   = ''; runDisplay(); } });
+
+  if (chips.length === 0) { el.innerHTML = ''; return; }
+  el.innerHTML = chips.map((c, i) =>
+    `<span class="fchip" id="chip-${i}">${x(c.label)}<span class="x" data-i="${i}">✕</span></span>`
+  ).join('');
+  el.querySelectorAll('.x').forEach(btn => {
+    btn.addEventListener('click', () => chips[+btn.dataset.i].clear());
+  });
+}
+
+// ═══════════════════════════════════════════════════════
+// VIEWS
+// ═══════════════════════════════════════════════════════
+function setView(v) {
+  currentView = v;
+  document.querySelectorAll('.vtab').forEach(t => t.classList.toggle('on', t.dataset.v === v));
+  renderCurrentView();
+}
+
+function toggleHighlight() {
+  highlightErrors = !highlightErrors;
+  document.getElementById('hl-btn').classList.toggle('on', highlightErrors);
+  renderCurrentView();
+}
+
+function renderCurrentView() {
+  if (currentView === 'table')  renderTable();
+  else if (currentView === 'trace')  renderTrace();
+  else if (currentView === 'cross')  renderCross();
+  else if (currentView === 'errors') renderErrors();
+}
+
+// ─── TABLE ────────────────────────────────────────────
+function renderTable() {
+  const area = document.getElementById('log-area');
+  if (files.length === 0) {
+    area.innerHTML = emptyState('🗂️', 'No log files loaded', 'Drop .log files into the panel on the left');
+    return;
+  }
+  if (allLogs.length === 0) {
+    // Files are loaded but nothing parsed — showParseWarning already set the area content
+    return;
+  }
+  if (displayLogs.length === 0) {
+    area.innerHTML = emptyState('🔍', 'No entries match your filters', 'Try adjusting or clearing filters');
+    return;
+  }
+
+  const h = s => x(s);
+  const hlText = (str, q) => {
+    if (!q) return x(str);
+    return x(str).replace(new RegExp('(' + reEsc(q) + ')', 'gi'), '<span class="hl">$1</span>');
+  };
+  const fc = id => files.find(f => f.id === id)?.color || '#888';
+  const fa = id => files.find(f => f.id === id)?.alias || id;
+  const fsrc = id => files.find(f => f.id === id)?.source || 'APP';
+  const th = (col, label) => {
+    const cls = sortCol === col ? (sortDir === 1 ? 'sa' : 'sd') : '';
+    return `<th onclick="tableSort('${col}')" class="${cls}">${label}</th>`;
+  };
+
+  let html = `<table class="log-tbl"><thead><tr>
+    <th style="width:3px;padding:0;border:none;background:var(--surface2)"></th>
+    ${th('time','Timestamp')}
+    ${th('fileId','File')}
+    <th>Src</th>
+    ${th('level','Level')}
+    <th>Logger</th>
+    ${th('reqid','Req-ID')}
+    ${th('uuid','UUID')}
+    <th>Message</th>
+  </tr></thead><tbody>`;
+
+  displayLogs.forEach((e, i) => {
+    const hl = highlightErrors;
+    const rowCls = hl && e.level === 'ERROR' ? 're' : hl && e.level === 'WARN' ? 'rw' : '';
+    const selCls = selectedRow === i ? 'sel' : '';
+    const color = fc(e.fileId);
+    const src = fsrc(e.fileId);
+    html += `<tr class="${rowCls} ${selCls}" onclick="clickRow(${i})">
+      <td class="td-bar"><div class="td-bar-inner" style="background:${color}"></div></td>
+      <td class="td-time">${h(e.time)}</td>
+      <td class="td-file"><span class="ftag" style="background:${color}1a;color:${color}" title="${h(files.find(f=>f.id===e.fileId)?.name||'')}">${h(fa(e.fileId))}</span></td>
+      <td class="td-src"><span class="sb2 sb2-${src}">${src}</span></td>
+      <td class="td-lvl"><span class="lb lb-${e.level}">${e.level}</span></td>
+      <td class="td-log" title="${h(e.logger)}">${hlText(e.logger, F.logger)}</td>
+      <td class="td-req" title="${h(e.reqid)}">${hlText(e.reqid, F.reqid)}</td>
+      <td class="td-uid" title="${h(e.uuid)}">${hlText(e.uuid, F.uuid)}</td>
+      <td class="td-msg"><span class="mt" title="${h(e.msg)}">${hlText(e.msg.split('\n')[0], F.text)}</span></td>
+    </tr>`;
+  });
+
+  html += '</tbody></table>';
+  area.innerHTML = html;
+}
+
+function tableSort(col) {
+  if (sortCol === col) sortDir = -sortDir;
+  else { sortCol = col; sortDir = 1; }
+  displayLogs.sort((a, b) => sortDir * ((a[col] || '').localeCompare(b[col] || '')));
+  renderTable();
+}
+
+// ─── TRACE ────────────────────────────────────────────
+function renderTrace() {
+  const area = document.getElementById('log-area');
+  if (!displayLogs.length) { area.innerHTML = emptyState('🔍', 'No entries to trace', ''); return; }
+
+  const groups = {};
+  displayLogs.forEach((e, i) => {
+    const k = (e.uuid || '—') + '||' + (e.reqid || '—');
+    if (!groups[k]) groups[k] = { uuid: e.uuid, reqid: e.reqid, fileIds: new Set(), entries: [] };
+    groups[k].entries.push({ ...e, _i: i });
+    groups[k].fileIds.add(e.fileId);
+  });
+
+  let html = '<div class="trace-view">';
+  for (const g of Object.values(groups)) {
+    const hasErr = g.entries.some(e => e.level === 'ERROR');
+    const hasWarn = g.entries.some(e => e.level === 'WARN');
+    const leftBorder = hasErr ? 'border-left:3px solid var(--red)' : hasWarn ? 'border-left:3px solid var(--yellow)' : '';
+
+    html += `<div class="tg">
+      <div class="tg-hdr" style="${leftBorder}">
+        ${hasErr ? `<span class="eb">⚠ ERROR</span>` : hasWarn ? `<span class="wb">⚠ WARN</span>` : ''}
+        ${g.uuid  ? `<span>UUID: <span class="tg-uid">${x(g.uuid)}</span></span>`  : ''}
+        ${g.reqid ? `<span>Req: <span class="tg-rid">${x(g.reqid)}</span></span>` : ''}
+        <div style="display:flex;gap:4px;flex-wrap:wrap">
+          ${[...g.fileIds].map(id => { const f = files.find(q=>q.id===id); return f ? `<span class="ftag" style="background:${f.color}1a;color:${f.color}">${x(f.alias)}</span>` : ''; }).join('')}
+        </div>
+        <span class="tg-fcnt">${g.entries.length} entries · ${g.fileIds.size} file(s)</span>
+      </div>
+      <table class="log-tbl" style="width:100%"><tbody>`;
+
+    g.entries.forEach(e => {
+      const hl = highlightErrors;
+      const rc = hl && e.level === 'ERROR' ? 're' : hl && e.level === 'WARN' ? 'rw' : '';
+      const f = files.find(q => q.id === e.fileId);
+      const c = f?.color || '#888';
+      html += `<tr class="${rc}" onclick="clickRow(${e._i})">
+        <td class="td-bar"><div class="td-bar-inner" style="background:${c}"></div></td>
+        <td class="td-time" style="width:148px">${x(e.time)}</td>
+        <td style="width:82px"><span class="ftag" style="background:${c}1a;color:${c}">${x(f?.alias||'')}</span></td>
+        <td style="width:60px"><span class="lb lb-${e.level}">${e.level}</span></td>
+        <td class="td-log" style="max-width:140px">${x(e.logger)}</td>
+        <td class="td-msg"><span class="mt">${x(e.msg.split('\n')[0])}</span></td>
+      </tr>`;
+    });
+    html += '</tbody></table></div>';
+  }
+  html += '</div>';
+  area.innerHTML = html;
+}
+
+// ─── CROSS-FILE ───────────────────────────────────────
+function renderCross() {
+  const area = document.getElementById('log-area');
+  const enabledFileCount = files.filter(f => f.enabled).length;
+
+  if (enabledFileCount < 2 && !F.uuid && !F.reqid) {
+    area.innerHTML = emptyState('📊', 'Cross-File view', 'Load 2+ files or search by UUID/Req-ID to see correlations across files');
+    return;
+  }
+  if (!displayLogs.length) { area.innerHTML = emptyState('🔍', 'No entries match filters', ''); return; }
+
+  // Group by UUID
+  const byUUID = {};
+  // Group by Req-ID
+  const byReq = {};
+
+  displayLogs.forEach((e, i) => {
+    if (e.uuid) {
+      if (!byUUID[e.uuid]) byUUID[e.uuid] = { key: e.uuid, type: 'uuid', fileIds: new Set(), entries: [] };
+      byUUID[e.uuid].entries.push({ ...e, _i: i });
+      byUUID[e.uuid].fileIds.add(e.fileId);
+    }
+    if (e.reqid) {
+      if (!byReq[e.reqid]) byReq[e.reqid] = { key: e.reqid, type: 'reqid', fileIds: new Set(), entries: [] };
+      byReq[e.reqid].entries.push({ ...e, _i: i });
+      byReq[e.reqid].fileIds.add(e.fileId);
+    }
+  });
+
+  // Cross = appears in 2+ files; single = appears in 1 file but user searched
+  const crossUUID   = Object.values(byUUID).filter(g => g.fileIds.size >= 2);
+  const crossReq    = Object.values(byReq).filter(g => g.fileIds.size >= 2);
+  const singleUUID  = Object.values(byUUID).filter(g => g.fileIds.size === 1 && F.uuid);
+  const singleReq   = Object.values(byReq).filter(g => g.fileIds.size === 1 && F.reqid);
+
+  if (!crossUUID.length && !crossReq.length && !singleUUID.length && !singleReq.length) {
+    area.innerHTML = emptyState('🔗', 'No cross-file correlations found',
+      'UUIDs and Request IDs only appear in single files with current filters.<br/>Try removing file or level filters.');
+    return;
+  }
+
+  const renderGroup = g => {
+    const hasErr = g.entries.some(e => e.level === 'ERROR');
+    const hasWarn = g.entries.some(e => e.level === 'WARN');
+    return `<div class="cg">
+      <div class="cg-hdr">
+        ${hasErr ? `<span class="eb">⚠ ERROR</span>` : hasWarn ? `<span class="wb">⚠ WARN</span>` : ''}
+        <span class="cg-key ${g.type === 'uuid' ? 'ku' : 'kr'}">${g.type === 'uuid' ? 'UUID' : 'Req-ID'}: ${x(g.key)}</span>
+        <div class="cg-chips">
+          ${[...g.fileIds].map(id => { const f = files.find(q=>q.id===id); return f ? `<span class="cg-chip" style="background:${f.color}1a;color:${f.color}">${x(f.alias)}</span>` : ''; }).join('')}
+        </div>
+      </div>
+      <div class="cg-timeline">
+        ${g.entries.map(e => {
+          const f = files.find(q => q.id === e.fileId); const c = f?.color || '#888';
+          return `<div class="cg-row" onclick="clickRow(${e._i})">
+            <span class="cg-time">${x(e.time)}</span>
+            <span class="cg-file"><span class="ftag" style="background:${c}1a;color:${c}">${x(f?.alias||'?')}</span></span>
+            <span class="cg-lvl"><span class="lb lb-${e.level}">${e.level}</span></span>
+            <span class="cg-msg">${x(e.msg.split('\n')[0])}</span>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`;
+  };
+
+  let html = '<div class="cross-view">';
+  if (crossUUID.length) {
+    html += `<div class="cv-section-title">🔗 UUID across multiple files (${crossUUID.length})</div>`;
+    html += crossUUID.map(renderGroup).join('');
+  }
+  if (crossReq.length) {
+    html += `<div class="cv-section-title">🔗 Request ID across multiple files (${crossReq.length})</div>`;
+    html += crossReq.map(renderGroup).join('');
+  }
+  if (singleUUID.length) {
+    html += `<div class="cv-section-title">📌 UUID match (single file)</div>`;
+    html += singleUUID.map(renderGroup).join('');
+  }
+  if (singleReq.length) {
+    html += `<div class="cv-section-title">📌 Request ID match (single file)</div>`;
+    html += singleReq.map(renderGroup).join('');
+  }
+  html += '</div>';
+  area.innerHTML = html;
+}
+
+// ─── ERRORS ───────────────────────────────────────────
+function renderErrors() {
+  const area = document.getElementById('log-area');
+  const errs  = displayLogs.filter(e => e.level === 'ERROR');
+  const warns = displayLogs.filter(e => e.level === 'WARN');
+
+  if (!errs.length && !warns.length) {
+    area.innerHTML = emptyState('✅', 'No errors or warnings', 'All good with current filters!');
+    return;
+  }
+
+  const renderSection = (title, list, color, icon) => {
+    if (!list.length) return '';
+    return `<div class="err-sec">
+      <div class="err-sec-hdr" style="color:${color}">${icon} ${list.length} ${title}</div>
+      <div class="err-list">
+        ${list.map(e => {
+          const f = files.find(q => q.id === e.fileId); const c = f?.color || '#888';
+          return `<div class="err-row" onclick="clickRow(displayLogs.indexOf(e))">
+            <span class="err-time">${x(e.time)}</span>
+            <span class="ftag" style="background:${c}1a;color:${c};flex-shrink:0">${x(f?.alias||'?')}</span>
+            <span class="sb2 sb2-${f?.source||'APP'}" style="flex-shrink:0">${f?.source||'APP'}</span>
+            <span style="color:${color};font-size:9.5px;font-family:'JetBrains Mono',monospace;flex-shrink:0;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${x(e.logger)}</span>
+            <span class="err-msg">${x(e.msg.split('\n')[0].substring(0, 160))}</span>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`;
+  };
+
+  area.innerHTML = `<div class="errors-view">
+    ${renderSection('ERRORS', errs, 'var(--red)', '🔴')}
+    ${renderSection('WARNINGS', warns, 'var(--yellow)', '🟡')}
+  </div>`;
+}
+
+// ═══════════════════════════════════════════════════════
+// DETAIL PANEL
+// ═══════════════════════════════════════════════════════
+function clickRow(i) {
+  selectedRow = i;
+  showDetail(displayLogs[i]);
+  if (currentView === 'table') renderTable();
+}
+
+function showDetail(e) {
+  if (!e) return;
+  const panel = document.getElementById('detail');
+  const body  = document.getElementById('detail-body');
+  const badges = document.getElementById('detail-badges');
+  panel.classList.add('open');
+
+  const f = files.find(q => q.id === e.fileId);
+  const c = f?.color || '#888';
+  badges.innerHTML = `<span class="lb lb-${e.level}">${e.level}</span> <span class="ftag" style="background:${c}1a;color:${c}">${x(f?.alias || '?')}</span>`;
+
+  const isMultiline = e.msg.includes('\n');
+  const isError = e.level === 'ERROR';
+
+  body.innerHTML = `
+    <div class="df"><label>Timestamp</label><value>${x(e.time)}</value></div>
+    <div class="df"><label>App Version</label><value>${x(e.version) || '—'}</value></div>
+    <div class="df"><label>Source</label><value>${x(f?.source || 'APP')}</value></div>
+    <div class="df"><label>File</label><value style="color:${c}">${x(f?.name || '?')}</value></div>
+    <div class="df"><label>Logger</label><value>${x(e.logger)}</value></div>
+    <div class="df"><label>Level</label><value><span class="lb lb-${e.level}">${e.level}</span></value></div>
+    <div class="df"><label>Request ID</label><value class="vr">${x(e.reqid) || '—'}</value></div>
+    <div class="df"><label>User UUID</label><value class="vu">${x(e.uuid) || '—'}</value></div>
+    <div class="df"></div>
+    ${(isMultiline || isError)
+      ? `<div class="stk ${isError ? '' : 'plain'}">${x(e.msg)}</div>`
+      : `<div class="df full"><label>Message</label><value>${x(e.msg)}</value></div>`
+    }
+    <div class="track-row">
+      ${e.uuid  ? `<button class="tbtn" onclick="trackByUUID('${x(e.uuid)}','trace')">🔍 Trace UUID</button>` : ''}
+      ${e.uuid  ? `<button class="tbtn" onclick="trackByUUID('${x(e.uuid)}','cross')">🗺 Cross-File UUID</button>` : ''}
+      ${e.reqid ? `<button class="tbtn" onclick="trackByReqID('${x(e.reqid)}')">🔍 Trace Req-ID</button>` : ''}
+      <button class="tbtn" onclick="isolateFile('${e.fileId}')">📁 Isolate file</button>
+    </div>`;
+}
+
+function trackByUUID(uuid, view) {
+  document.getElementById('f-uuid').value  = uuid;
+  document.getElementById('f-reqid').value = '';
+  F.uuid = uuid.toLowerCase(); F.reqid = '';
+  closeDetail(); setView(view); runDisplay();
+}
+function trackByReqID(reqid) {
+  document.getElementById('f-reqid').value = reqid;
+  document.getElementById('f-uuid').value  = '';
+  F.reqid = reqid.toLowerCase(); F.uuid = '';
+  closeDetail(); setView('trace'); runDisplay();
+}
+function isolateFile(id) {
+  F.fileId = id; renderFilePills(); closeDetail(); runDisplay();
+}
+function closeDetail() {
+  document.getElementById('detail').classList.remove('open');
+  selectedRow = null;
+  if (currentView === 'table') renderTable();
+}
+
+// ═══════════════════════════════════════════════════════
+// FILE SETTINGS MODAL
+// ═══════════════════════════════════════════════════════
+function openModal(id) {
+  const f = files.find(q => q.id === id);
+  if (!f) return;
+  modalFileId = id;
+  modalColor = f.color;
+  document.getElementById('m-alias').value = f.alias;
+  document.getElementById('m-src').value = f.source;
+  const cp = document.getElementById('color-picker');
+  cp.innerHTML = FILE_COLORS.map(c =>
+    `<div class="cswatch ${c === f.color ? 'sel' : ''}" style="background:${c}" onclick="pickColor('${c}',this)"></div>`
+  ).join('');
+  document.getElementById('modal').classList.remove('hidden');
+}
+function pickColor(c, el) {
+  modalColor = c;
+  document.querySelectorAll('.cswatch').forEach(s => s.classList.remove('sel'));
+  el.classList.add('sel');
+}
+function saveModal() {
+  const f = files.find(q => q.id === modalFileId);
+  if (f) {
+    f.alias = document.getElementById('m-alias').value.trim() || f.alias;
+    f.source = document.getElementById('m-src').value;
+    f.color = modalColor;
+    f.customColor = true;
+  }
+  closeModal();
+  renderFileList(); renderFilePills(); runDisplay();
+}
+function closeModal() { document.getElementById('modal').classList.add('hidden'); }
+
+// ═══════════════════════════════════════════════════════
+// EXPORT
+// ═══════════════════════════════════════════════════════
+function exportCSV() {
+  if (!displayLogs.length) return;
+  const header = ['time','level','source','file','alias','logger','reqid','uuid','msg'];
+  const rows = displayLogs.map(e => {
+    const f = files.find(q => q.id === e.fileId);
+    return [
+      e.time, e.level, f?.source||'', f?.name||'', f?.alias||'',
+      e.logger, e.reqid, e.uuid,
+      '"' + e.msg.replace(/"/g, '""').replace(/\n/g,' ') + '"'
+    ].join(',');
+  });
+  const blob = new Blob([[header.join(','), ...rows].join('\n')], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'logs_export.csv';
+  a.click();
+}
+
+// ═══════════════════════════════════════════════════════
+// UTILITIES
+// ═══════════════════════════════════════════════════════
+function x(s) {
+  if (s == null) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+function reEsc(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+function emptyState(icon, title, sub) {
+  return `<div class="empty-state">
+    <div class="es-ico">${icon}</div>
+    <div class="es-ttl">${title}</div>
+    ${sub ? `<div class="es-sub">${sub}</div>` : ''}
+  </div>`;
+}
+
+// ═══════════════════════════════════════════════════════
+// EVENT WIRING
+// ═══════════════════════════════════════════════════════
+
+// File input
+document.getElementById('file-input').addEventListener('change', e => {
+  loadFiles([...e.target.files]);
+  e.target.value = '';
+});
+
+// Drag & drop
+const dz = document.getElementById('dz');
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('drag'));
+dz.addEventListener('drop', e => {
+  e.preventDefault(); dz.classList.remove('drag');
+  loadFiles([...e.dataTransfer.files]);
+});
+
+// Level pills — update F immediately and re-display
+document.getElementById('level-pills').addEventListener('click', e => {
+  const p = e.target.closest('.pill');
+  if (!p) return;
+  document.querySelectorAll('#level-pills .pill').forEach(q => q.classList.remove('on'));
+  p.classList.add('on');
+  F.level = p.dataset.l;
+  runDisplay();
+});
+
+// Source pills
+document.getElementById('src-pills').addEventListener('click', e => {
+  const p = e.target.closest('.pill');
+  if (!p) return;
+  document.querySelectorAll('#src-pills .pill').forEach(q => q.classList.remove('on'));
+  p.classList.add('on');
+  F.src = p.dataset.s;
+  runDisplay();
+});
+
+// Text inputs — apply on Enter key
+['f-text','f-uuid','f-reqid','f-logger','f-ver'].forEach(id => {
+  document.getElementById(id).addEventListener('keydown', e => {
+    if (e.key === 'Enter') applyFilters();
+  });
+});
+
+// Date inputs — apply immediately on change
+['f-from','f-to'].forEach(id => {
+  document.getElementById(id).addEventListener('change', applyFilters);
+});
+
+// Modal background click to close
+document.getElementById('modal').addEventListener('click', e => {
+  if (e.target === document.getElementById('modal')) closeModal();
+});
+</script>
+</body>
+</html>
